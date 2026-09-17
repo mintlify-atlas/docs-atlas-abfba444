@@ -1,7 +1,7 @@
 ---
-title: "Player Movement and Physics System in World Bits"
+title: "World Bits Player Movement, Physics, and Game Controls"
 sidebarTitle: "Player"
-description: "How World Bits handles player movement, jumping, running, hurt state, and stair/transport triggers across PlayerLs, PlayerInfinite, and PlayerLevels scripts."
+description: "How World Bits handles player movement, jumping, running, and hurt state across PlayerLs, PlayerInfinite, and PlayerLevels scripts."
 ---
 
 World Bits uses three separate player scripts depending on the active game mode. **PlayerLs** drives the player in story levels (Level1, Level2, Level3), providing a countdown timer, checkpoint saving, and transport triggers. **PlayerInfinite** takes over in Infinite mode, replacing the countdown with a count-up survival timer and swapping respawns for a full scene reload back to the level-select screen. **PlayerLevels** is a lightweight variant used only on the level-select hub scene — it has reduced speed values and no lives or coins, serving purely as a navigation character.

@@ -1,5 +1,5 @@
 ---
-title: "Procedural Map Generation in Infinite Mode"
+title: "World Bits Procedural Map Generation in Infinite Mode"
 sidebarTitle: "Map Generation"
 description: "World Bits uses trigger-based map tile instantiation in Infinite mode. MapGenerator spawns new tile prefabs ahead of the player as they move forward."
 ---
@@ -76,14 +76,15 @@ Each tile prefab includes one or more `SpawnerMonedas` components that randomly 
 ```csharp
 void Start()
 {
-    if (Random.Range(1, 6) < 4)
+    int probabilidad = Random.Range(1, 6);
+    if (probabilidad < 4 && probabilidad > 0)
     {
-        Instantiate(moneda, transform.position, transform.rotation);
+        Instantiate(objeto, transform.position, transform.rotation);
     }
 }
 ```
 
-`Random.Range(1, 6)` returns an integer in `[1, 5]`. Values `1`, `2`, and `3` are less than `4`, so approximately **60 %** of spawner positions produce a cherry. This creates natural variation in coin density across every generated tile without any designer intervention.
+`Random.Range(1, 6)` returns an integer in `[1, 5]`. The condition `probabilidad < 4 && probabilidad > 0` matches values `1`, `2`, and `3` — three out of five possible results — so approximately **60 %** of spawner positions produce a cherry. This creates natural variation in coin density across every generated tile without any designer intervention.
 
 <Tip>
   When building a new map segment prefab, make sure the `MapGenerator` component on that prefab has `generate` left at its default `false`. If you accidentally set it to `true` in the prefab asset, the trigger will never fire when that tile is instantiated at runtime and the chain will break.

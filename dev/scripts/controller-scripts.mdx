@@ -1,7 +1,7 @@
 ---
-title: "Controller Scripts: Camera, Events, Menu, Reset"
+title: "Controller Scripts: Camera, Events, Map, Menu, Reset"
 sidebarTitle: "Controller Scripts"
-description: "Reference for CameraController, EventosController, MenuController, ResetController, MapGenerator, and SpawnerMonedas — support scripts that drive World Bits systems."
+description: "Reference for CameraController, EventosController, MenuController, ResetController, MapGenerator, and SpawnerMonedas — the World Bits support scripts."
 ---
 
 The controller and support scripts in World Bits manage everything that sits outside the player and enemy characters: the camera that follows the action, the day/night background colour cycle, the main menu navigation, the pause and reset system, procedural map chunk spawning in the infinite runner, and randomised coin spawning throughout all levels. None of these scripts represent a character — they are attached to dedicated manager or environment GameObjects and communicate with the player scripts through public Inspector references or Unity tags.
@@ -224,7 +224,15 @@ Flips `isPaused` and sets `Time.timeScale` to `0` (paused) or `1` (running). Set
 public void TogglePause()
 {
     isPaused = !isPaused;
-    Time.timeScale = isPaused ? 0 : 1;
+
+    if (isPaused)
+    {
+        Time.timeScale = 0;
+    }
+    else
+    {
+        Time.timeScale = 1;
+    }
 }
 ```
 

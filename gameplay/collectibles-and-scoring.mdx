@@ -1,5 +1,5 @@
 ---
-title: "Collectibles, Lives, and Scoring in World Bits"
+title: "Collectibles, Lives, and Scoring in World Bits Guide"
 sidebarTitle: "Collectibles & Scoring"
 description: "Learn how cherries, hearts, and lives work in World Bits — collection logic, UI counters, level completion thresholds, and high-score persistence."
 ---
@@ -36,7 +36,7 @@ if (((monedas == 12) || (monedas == 22) || (monedas == 34)) && collision.gameObj
 }
 ```
 
-Any other count leaves the exit inactive, so collecting too many cherries past a threshold will not block progress — the next valid threshold will work instead.
+Any other count leaves the exit inactive. If you overshoot a threshold, collecting more cherries can hit the next one (22 or 34), but there is no threshold above 34 — overshooting the final count of 34 leaves the exit permanently inactive for that run.
 
 **Spawn probability** — cherries in story levels are placed using `SpawnerMonedas`. On scene load, each spawner rolls `Random.Range(1, 6)` and instantiates the cherry prefab only when the result is between 1 and 3 inclusive (i.e., `probabilidad < 4 && probabilidad > 0`), giving a **60 % spawn chance** per spawner position:
 
