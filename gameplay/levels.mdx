@@ -1,0 +1,66 @@
+---
+title: "World Bits Levels: Hub World and Story Stages"
+sidebarTitle: "Levels"
+description: "Explore the World Bits level structure — the Levels hub, three story stages, the Controles screen, and how the scene-loading flow connects them."
+---
+
+World Bits is organised as a small collection of Unity scenes wired together by `SceneManager.LoadScene()` calls. The **Levels** hub acts as a central connector — every game session begins at the `Menu` scene, passes through `Levels`, and branches out to story stages or Infinite mode. Completing a story level or dying in Infinite mode both return you to `Levels`, keeping all progress within a single loop.
+
+## Scene Overview
+
+| Scene | Description | Script | Timer |
+|-------|-------------|--------|-------|
+| `Menu` | Main menu with Play, Controls, and Quit buttons | `MenuController` | No timer |
+| `Levels` | Hub world and level-select area | `PlayerLevels` | No timer |
+| `Controles` | Static controls reference screen | `MenuController` | No timer |
+| `Level1` | Story Level 1 | `PlayerLs` + `ResetController` | 300 s countdown |
+| `Level2` | Story Level 2 | `PlayerLs` + `ResetController` | 300 s countdown |
+| `Level3` | Story Level 3 | `PlayerLs` + `ResetController` | 300 s countdown |
+| `Infinite` | Endless runner | `PlayerInfinite` | Count-up timer |
+
+`MenuController` handles the `Menu` and `Controles` scenes. It exposes four UI-button callbacks: `Scena1()` loads `Levels`, `Controles()` loads `Controles`, `Menu()` returns to `Menu`, and `Salir()` calls `Application.Quit()`.
+
+## Story Level Rules
+
+All three story levels share identical rules defined in `PlayerLs.cs` and enforced by `ResetController`.
+
+- **Timer** — each level starts with `time = 300.0f`. The value decreases by `Time.deltaTime` every frame and is displayed in the UI `Text` object tagged `ContadorTiempo`. When `((int)time) == 0`, `ResetController` calls `ResetToDefaults()` automatically.
+- **Lives** — the player starts with `vida = 3`, shown in the UI `Text` object tagged `vida`. Colliding with an object tagged `enemigo` or entering a trigger tagged `enemigo` or `deadzone` deducts one life (after the `isHurt` invincibility window expires). A `deadzone` trigger sets `vida = 0` directly before the deduction logic runs.
+- **Invincibility** — after taking damage the player is invincible for `hurtDuration = 1.0f` seconds, controlled by `isHurt` and `hurtTimer`.
+- **Cherry threshold** — the `End` trigger (tagged `End`) only fires a scene load when `monedas == 12`, `monedas == 22`, or `monedas == 34`. Reaching the exit with any other count has no effect.
+- **Checkpoints** — touching a trigger tagged `checkpoint` saves the player's current world position and state to `PlayerPrefs` keys `checkpoint_x`, `checkpoint_y`, `checkpoint_z`, `vida`, and `monedas`.
+- **Lives reaching zero** — when `vida <= 0` (from any source), the player is teleported to `checkpoint` and `vida` is reset to `1`. There is no true game-over screen; the player always continues from the last checkpoint.
+
+## Hub World Navigation
+
+The `Levels` scene runs `PlayerLevels`, which uses `OnTriggerEnter2D` to watch for four tagged trigger zones placed next to level doors. When the player's collider enters one of these zones, the matching slot in the `ActiveNv[4]` boolean array is set to `true` (all others are set to `false`). The `LoadScene()` method checks every frame whether a slot is active **and** the **Up Arrow** key is held; if both conditions are met, the corresponding Unity scene is loaded.
+
+| Door Tag | `ActiveNv` Index | Loads Scene |
+|----------|-----------------|-------------|
+| `flappymode` | `[0]` | `Infinite` |
+| `level1` | `[1]` | `Level1` |
+| `level2` | `[2]` | `Level2` |
+| `level3` | `[3]` | `Level3` |
+
+Walking away from a door before pressing **Up Arrow** prevents accidental loading, because entering a new trigger zone resets the flags for the other three zones.
+
+The hub also displays the Infinite mode high score: `PlayerLevels.Start()` reads `PlayerPrefs.GetInt("MonedasMaximas")` and `PlayerPrefs.GetInt("TiempoMaximo")` and writes them to the `TextMesh` objects tagged `Rcerezas` and `Rtiempo` respectively (only when `MonedasMaximas != 0`).
+
+Pressing **M** anywhere in the hub calls `SceneManager.LoadScene("Menu")` directly from the `Move()` method.
+
+## Completing a Level
+
+<Steps>
+  <Step title="Reach a Checkpoint">
+    Touch the trigger object tagged `checkpoint`. Your current position, `vida`, and `monedas` count are saved to `PlayerPrefs`. If you die after this point, you respawn here instead of at the level start.
+  </Step>
+  <Step title="Collect the Required Cherries">
+    Collect cherries (tagged `Moneda`) until your count reaches exactly **12**, **22**, or **34**. The exit trigger (`End`) does nothing at any other count. The current count is always shown in the UI element tagged `ContadorMonedas`.
+  </Step>
+  <Step title="Reach the End Trigger">
+    Walk through the trigger zone tagged `End`. `PlayerLs.OnTriggerEnter2D` checks whether `monedas` matches one of the three thresholds and, if so, immediately calls `SceneManager.LoadScene("Levels")`.
+  </Step>
+  <Step title="Return to the Levels Hub">
+    The game loads the `Levels` scene. Your Infinite mode high score is displayed on screen. Walk to another door and press **Up Arrow** to start the next stage.
+  </Step>
+</Steps>

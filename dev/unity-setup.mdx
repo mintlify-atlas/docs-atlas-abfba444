@@ -1,0 +1,91 @@
+---
+title: "Unity 2022.3.7f1 Setup for World Bits Development"
+sidebarTitle: "Unity Setup"
+description: "Install Unity 2022.3.7f1, configure Visual Studio with the ManagedGame workload, and open the World Bits project for local development."
+---
+
+World Bits targets **Unity 2022.3.7f1 (LTS)** — the exact editor version recorded in `ProjectSettings/ProjectVersion.txt`. The project uses no native plug-ins or platform-specific toolchains beyond the standard 2D feature set, so any Windows, macOS, or Linux machine that can run the Unity Hub is sufficient. Visual Studio is the officially configured IDE (`.vsconfig` ships with the repo), but Rider works out of the box as well via the bundled `com.unity.ide.rider` package.
+
+## Requirements
+
+| Requirement | Version / Notes |
+|---|---|
+| Unity Editor | **2022.3.7f1** — exact version required (see [ProjectVersion.txt](https://github.com/soymatudev/World-bits/blob/main/ProjectSettings/ProjectVersion.txt)) |
+| Visual Studio | Any edition with the **`Microsoft.VisualStudio.Workload.ManagedGame`** workload (Unity Game Development) — declared in `.vsconfig` |
+| Git | Any recent version — needed to clone the repository |
+| Unity Hub | Recommended for managing editor installs and project launches |
+
+## Getting Started
+
+<Steps>
+  <Step title="Install Unity Hub">
+    Download and install **Unity Hub** from [unity.com/download](https://unity.com/download). Unity Hub manages multiple editor versions side-by-side and is the easiest way to install the exact version required.
+  </Step>
+
+  <Step title="Install Unity 2022.3.7f1">
+    In Unity Hub, go to **Installs → Add → Install Editor**, then type `2022.3.7f1` in the search box (or select it from the LTS list). Under **Modules**, tick **Visual Studio** if you want the IDE installed alongside the editor. Click **Install** and wait for the download to complete.
+  </Step>
+
+  <Step title="Clone the repository">
+    ```text
+    git clone https://github.com/soymatudev/World-bits.git
+    ```
+    This creates a `World-bits/` folder containing `Assets/`, `Packages/`, and `ProjectSettings/`.
+  </Step>
+
+  <Step title="Open the project in Unity Hub">
+    In Unity Hub, go to **Projects → Open → Add project from disk** and select the `World-bits/` folder you just cloned. Unity 2022.3.7f1 will launch, import assets, and resolve all packages listed in `Packages/manifest.json` automatically. The first import may take a few minutes.
+  </Step>
+
+  <Step title="Enter Play mode">
+    Once the import finishes, open `Assets/Scenes/Menu.unity` in the Project window (double-click), then press the **Play** button (or `Ctrl/Cmd + P`). The main menu scene loads and the game is ready to test.
+  </Step>
+</Steps>
+
+## Key Packages
+
+These packages from `Packages/manifest.json` are the most relevant to day-to-day development.
+
+| Package | Version | Purpose |
+|---|---|---|
+| `com.unity.feature.2d` | 2.0.0 | Meta-package that pulls in the full Unity 2D game development feature set (Tilemap, Sprite Atlas, 2D Physics, etc.) |
+| `com.unity.textmeshpro` | 3.0.6 | High-quality UI text rendering used for all in-game HUD labels (cherry counter, timer, lives) |
+| `com.unity.visualscripting` | 1.8.0 | Visual scripting node graph support — included in the project dependencies |
+| `com.unity.timeline` | 1.7.5 | Animation timeline editor for cutscenes and sequenced events |
+| `com.unity.ide.visualstudio` | 2.0.18 | Visual Studio integration — enables solution file generation and debugger attachment |
+| `com.unity.ide.rider` | 3.0.24 | JetBrains Rider integration — enables Rider as an alternative IDE |
+
+## Tags & Layers
+
+The following custom tags are defined in `ProjectSettings/TagManager.asset` and are referenced throughout the scripts by string comparison (e.g. `collision.gameObject.tag == "Suelo"`).
+
+| Tag | Used By |
+|---|---|
+| `Suelo` | Ground collision — resets `tocandoSuelo = true` and clears jump/hurt animations |
+| `Moneda` | Cherry collectibles — increments `monedas` counter and destroys the object |
+| `deadzone` | Kill volumes — sets `vida = 0` immediately, bypassing invincibility frames |
+| `ContadorMonedas` | UI `Text` object that displays the current cherry count |
+| `vida` | UI `Text` object that displays the current life count |
+| `ContadorTiempo` | UI `Text` object that displays the countdown/count-up timer |
+| `enemigo` | Enemy colliders — triggers damage and hurt state on the player |
+| `checkpoint` | Checkpoint flags — saves position, lives, and cherry count to `PlayerPrefs` |
+| `textmuerte` | Death-screen text UI element |
+| `PlayerLevels` | Identifies the hub-world player — used by `CameraController` to switch camera follow modes |
+| `flappymode` | Door trigger in Levels scene that loads the `Infinite` scene |
+| `level1` | Door trigger that loads `Level1` |
+| `level2` | Door trigger that loads `Level2` |
+| `level3` | Door trigger that loads `Level3` |
+| `End` | Level-end trigger — checked together with cherry count to advance to `Levels` |
+| `back` | Background sprite renderers — targeted by `EventosController` for the day/night colour cycle |
+| `heart` | Extra-life pickup prefab |
+| `transport` | Transport trigger — teleports the player to a fixed world coordinate on Up Arrow |
+| `stair` | Stair trigger — applies upward velocity on Up Arrow instead of a teleport |
+| `Rcerezas` | TextMesh object in `Levels` that shows best cherry count (read from `MonedasMaximas`) |
+| `Rtiempo` | TextMesh object in `Levels` that shows best time (read from `TiempoMaximo`) |
+| `generator` | Trigger zone used by `MapGenerator` to detect the player and spawn the next map tile |
+
+All tags are configured in `ProjectSettings/TagManager.asset` and must not be renamed without updating every script that references them.
+
+<Warning>
+  Opening the World Bits project in any Unity version other than **2022.3.7f1** may cause asset serialization mismatches, broken prefab connections, or shader compilation errors. Always use the exact version specified in `ProjectSettings/ProjectVersion.txt`.
+</Warning>

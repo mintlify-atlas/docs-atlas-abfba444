@@ -1,0 +1,184 @@
+---
+title: "Collectibles, Lives, and Scoring in World Bits"
+sidebarTitle: "Collectibles & Scoring"
+description: "Learn how cherries, hearts, and lives work in World Bits — collection logic, UI counters, level completion thresholds, and high-score persistence."
+---
+
+World Bits has a small but tightly integrated collectible economy built around two pickup types — cherries and hearts — plus a lives counter and a timer that behave differently across game modes. Cherries serve triple duty: they update your on-screen count, gate the story-level exit, and form the core of the Infinite mode high-score system. Hearts replenish lives on the spot. Understanding how each system works will help you plan routes and avoid unnecessary deaths.
+
+## Cherries (Coins)
+
+Cherries are the primary collectible in every game mode. In the Unity scene they are individual `GameObject` instances tagged **`Moneda`**.
+
+**Collection logic** (from `PlayerLs.cs` and `PlayerInfinite.cs`):
+
+```csharp
+if (collision.gameObject.tag == "Moneda")
+{
+    monedas++;
+    Destroy(collision.gameObject);
+    Text contadorMonedas = GameObject.FindWithTag("ContadorMonedas").GetComponent<Text>();
+    contadorMonedas.text = monedas + "";
+}
+```
+
+When the player's collider enters a cherry trigger:
+1. `monedas` is incremented by 1.
+2. The cherry `GameObject` is destroyed (it cannot be collected twice).
+3. The UI `Text` element tagged **`ContadorMonedas`** is updated to show the new count.
+
+**Story level exit thresholds** — the `End` trigger only loads the `Levels` scene when `monedas` equals exactly **12**, **22**, or **34**:
+
+```csharp
+if (((monedas == 12) || (monedas == 22) || (monedas == 34)) && collision.gameObject.tag == "End")
+{
+    SceneManager.LoadScene("Levels", LoadSceneMode.Single);
+}
+```
+
+Any other count leaves the exit inactive, so collecting too many cherries past a threshold will not block progress — the next valid threshold will work instead.
+
+**Spawn probability** — cherries in story levels are placed using `SpawnerMonedas`. On scene load, each spawner rolls `Random.Range(1, 6)` and instantiates the cherry prefab only when the result is between 1 and 3 inclusive (i.e., `probabilidad < 4 && probabilidad > 0`), giving a **60 % spawn chance** per spawner position:
+
+```csharp
+int probabilidad = Random.Range(1, 6);
+if (probabilidad < 4 && probabilidad > 0)
+{
+    Instantiate(objeto, transform.position, transform.rotation);
+}
+```
+
+This means the number of available cherries varies slightly between runs.
+
+## Hearts (Extra Lives)
+
+Hearts are one-time pickups tagged **`heart`** that restore one life on contact.
+
+**Collection logic in story levels** (`PlayerLs.cs`):
+
+```csharp
+if (collision.gameObject.tag == "heart")
+{
+    vida++;
+    Destroy(GameObject.FindWithTag("heart"));
+    contadorVidas.text = vida + "";
+}
+```
+
+**Collection logic in Infinite mode** (`PlayerInfinite.cs`):
+
+```csharp
+if (collision.gameObject.tag == "heart")
+{
+    vida++;
+    Destroy(collision.gameObject);
+    contadorVidas.text = vida + "";
+}
+```
+
+Both modes increment `vida` by 1, destroy the heart, and update the lives UI (`Text` tagged **`vida`**). There is no upper cap on `vida` in the source code, so collecting multiple hearts can raise your life count above the starting value of 3.
+
+<Note>
+  In story levels, `Destroy(GameObject.FindWithTag("heart"))` destroys the **first** scene object with the `heart` tag rather than the specific collider object. In practice this behaves identically as long as only one heart is present in the area.
+</Note>
+
+## Lives System
+
+Both `PlayerLs` and `PlayerInfinite` start with `vida = 3` and display the count in the UI `Text` object tagged **`vida`**.
+
+**Damage sources:**
+- Collision with an object tagged `enemigo` (both `OnCollisionEnter2D` and `OnTriggerEnter2D` are handled)
+- Entering a trigger tagged `deadzone` — this sets `vida = 0` directly before the standard deduction runs
+
+**Invincibility window** — after taking damage, the `isHurt` flag is set to `true` and `hurtTimer` begins counting up. No further damage is applied until `hurtTimer >= hurtDuration` (`1.0f` seconds), at which point `isHurt` resets to `false`:
+
+```csharp
+float hurtDuration = 1.0f;
+float hurtTimer = 0.0f;
+
+private void PlayerHurt()
+{
+    if (isHurt)
+    {
+        hurtTimer += Time.deltaTime;
+        if (hurtTimer >= hurtDuration)
+        {
+            isHurt = false;
+            hurtTimer = 0.0f;
+            player_anim.SetBool("hurt", false);
+        }
+    }
+}
+```
+
+**Reaching 0 lives — Story Levels:** the player is teleported to the saved `checkpoint` position and `vida` is reset to `1`. There is no game-over screen; play continues immediately from the checkpoint:
+
+```csharp
+if (vida <= 0)
+{
+    transform.position = checkpoint;
+    vida = 1;
+    contadorVidas.text = vida + "";
+}
+```
+
+**Reaching 0 lives — Infinite Mode:** the high-score check runs, `PlayerPrefs` is saved, and the `Levels` scene is loaded. There is no checkpoint respawn in Infinite mode.
+
+## Timer
+
+The timer behaves differently depending on which script is running.
+
+**Story Levels (`PlayerLs`):**
+
+```csharp
+public float time = 300.0f;
+
+private void TextTime()
+{
+    if (time >= 0)
+    {
+        time -= Time.deltaTime;
+        Text contadorTiempo = GameObject.FindWithTag("ContadorTiempo").GetComponent<Text>();
+        contadorTiempo.text = ((int)time) + "";
+    }
+}
+```
+
+- Starts at `300.0f` seconds and counts **down**.
+- Displayed as an integer in the UI `Text` tagged **`ContadorTiempo`**.
+- When `((int)referenciaL1.time) == 0`, `ResetController.ResetToDefaults()` fires automatically, resetting all state and reloading the scene.
+- Pressing **R** also calls `ResetToDefaults()`, which restores `time` to `300.0f` among other values.
+
+**Infinite Mode (`PlayerInfinite`):**
+
+```csharp
+public float time = 0.0f;
+
+private void TextTime()
+{
+    time += Time.deltaTime;
+    Text contadorTiempo = GameObject.FindWithTag("ContadorTiempo").GetComponent<Text>();
+    contadorTiempo.text = ((int)time) + "";
+}
+```
+
+- Starts at `0.0f` and counts **up** for the entire run.
+- The integer value is saved to `PlayerPrefs` as `TiempoMaximo` when a new cherry record is set.
+
+## Persistence
+
+The following values are written to `PlayerPrefs` during gameplay. They persist between sessions until overwritten.
+
+| Key | Type | Written By | Description |
+|-----|------|-----------|-------------|
+| `MonedasMaximas` | `int` | `PlayerInfinite` | Best cherry count across all Infinite runs |
+| `TiempoMaximo` | `int` | `PlayerInfinite` | Time (seconds) of the run that set `MonedasMaximas` |
+| `checkpoint_x` | `float` | `PlayerLs` / `ResetController` | X coordinate of the last checkpoint reached |
+| `checkpoint_y` | `float` | `PlayerLs` / `ResetController` | Y coordinate of the last checkpoint reached |
+| `checkpoint_z` | `float` | `PlayerLs` / `ResetController` | Z coordinate of the last checkpoint reached (always `-2.0f`) |
+| `vida` | `int` | `PlayerLs` | Lives count at the last checkpoint |
+| `monedas` | `int` | `PlayerLs` / `ResetController` | Cherry count at the last checkpoint |
+| `positionO_x` | `float` | `PlayerLs.Start()` | Level origin X (`-0.7244456f`) — used by reset to restore the initial checkpoint |
+| `positionO_y` | `float` | `PlayerLs.Start()` | Level origin Y (`-2.08f`) |
+| `positionO_z` | `float` | `PlayerLs.Start()` | Level origin Z (`-2.0f`) |
+| `time` | `float` | `ResetController` | Timer value saved on reset (always restored to `300.0f`) |

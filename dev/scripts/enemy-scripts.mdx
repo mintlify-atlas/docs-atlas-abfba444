@@ -1,0 +1,191 @@
+---
+title: "Enemy Scripts API: EnemyMovement, EnemyAI, BearLs"
+sidebarTitle: "Enemy Scripts"
+description: "Reference for all World Bits enemy MonoBehaviours — configurable fields, patrol and tracking logic, jump intervals, and sprite-flip behavior."
+---
+
+World Bits has four enemy MonoBehaviours covering every hostile and decorative character in the game. **EnemyMovement** provides a simple left-right patrol that any ground enemy can use. **EnemyAI** upgrades that into active player-tracking on the X axis. **BearLs** combines the patrol pattern with timed jumping, making the bear character an unpredictable obstacle in the level scenes. **BearMenu** is a cosmetic-only variant used on the main menu to animate a bear mascot without any game logic. All patrol scripts determine facing direction by rotating the Transform's Y axis — no separate sprite-flip component is required.
+
+---
+
+## EnemyMovement
+
+`EnemyMovement` gives any ground enemy a left-right patrol between two points equidistant from its spawn position. The patrol width and walk speed are both tunable in the Inspector with no code changes.
+
+### Public Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `speed` | `float` | `1.1f` | Movement speed in units per second. |
+| `distance` | `float` | `5.0f` | Maximum distance the enemy travels in each direction from its `startPosition`. |
+
+### Private / State Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `startPosition` | `Vector3` | World position at `Start()`; serves as the centre of the patrol range. |
+| `direction` | `int` | `1` = moving right, `-1` = moving left. Flipped when the patrol boundary is exceeded. |
+| `enemy_tr` | `Transform` | Cached `Transform` component used for sprite rotation. |
+
+### `Update()` Logic
+
+Each frame a candidate `newPosition` is calculated by advancing along `Vector3.right` at `speed * direction`. If the X distance from `startPosition` would exceed `distance`, `direction` is multiplied by `-1` before the move is applied. The sprite is then oriented: when `direction == 1` (moving right) the Y rotation is set to `180°` so the sprite faces right; when `direction == -1` it is `0°` (faces left).
+
+```csharp
+private void Update()
+{
+    Vector3 newPosition = transform.position + Vector3.right * speed * direction * Time.deltaTime;
+
+    if (Mathf.Abs(newPosition.x - startPosition.x) > distance)
+    {
+        direction *= -1;
+    }
+
+    if (direction == 1) { enemy_tr.rotation = new Quaternion(0, 180f, 0, 0); }
+    else                { enemy_tr.rotation = new Quaternion(0, 0f, 0, 0);   }
+
+    transform.position = newPosition;
+}
+```
+
+---
+
+## EnemyAI
+
+`EnemyAI` makes an enemy continuously track the player's X position using `Vector2.MoveTowards`, closing the gap at a constant speed regardless of distance. The Y position of the enemy is never altered — the enemy stays on its platform while sliding toward the player horizontally.
+
+### Public Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `velocidadEnemigo` | `float` | `1.0f` | Horizontal tracking speed in units per second. |
+| `player` | `Transform` | _(Inspector — drag Player GameObject)_ | Target transform whose X position is chased each frame. |
+
+### `Update()` Logic
+
+`Vector2.MoveTowards` moves the enemy toward `(player.position.x, transform.position.y)` at `velocidadEnemigo * Time.deltaTime` per frame — the Y component is locked to the enemy's own Y. After moving, the sprite faces the player by comparing X positions and setting Y rotation accordingly.
+
+```csharp
+void Update()
+{
+    transform.position = Vector2.MoveTowards(
+        transform.position,
+        new Vector2(player.position.x, transform.position.y),
+        velocidadEnemigo * Time.deltaTime
+    );
+
+    if (player.position.x > transform.position.x)
+    {
+        enemy.rotation = new Quaternion(0, 180f, 0, 0);
+    }
+    else
+    {
+        enemy.rotation = new Quaternion(0, 0f, 0, 0);
+    }
+}
+```
+
+---
+
+## BearLs
+
+`BearLs` is the enemy script for the bear character in the level scenes. It combines the same left-right patrol algorithm as `EnemyMovement` with a periodic upward jump driven by a time-based interval. The Rigidbody2D's `AddForce` is used for the jump so the jump height responds to gravity naturally.
+
+### Public Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `salto` | `float` | `7.5f` | Impulse magnitude passed to `AddForce(Vector2.up * salto, ForceMode2D.Impulse)`. |
+| `speed` | `float` | `1.0f` | Patrol speed in units per second. |
+| `distance` | `float` | `5.0f` | Half-width of the patrol range from `startPosition`. |
+| `intervaloDeSalto` | `float` | `3.0f` | Seconds between jumps. |
+
+### Private / State Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `startPosition` | `Vector3` | Patrol centre captured at `Start()`. |
+| `direction` | `int` | Patrol direction: starts at `-1` (moving left). |
+| `enemy_tr` | `Transform` | Cached `Transform` for rotation. |
+| `tiempoDesdeUltimoSalto` | `float` | Accumulates `Time.deltaTime`; triggers `Saltar()` when it reaches `intervaloDeSalto`. |
+
+### `Saltar()` Method
+
+Resets `tiempoDesdeUltimoSalto` to zero, fetches the `Rigidbody2D`, and applies an upward impulse force. Because `ForceMode2D.Impulse` is used, the bear launches immediately and rises/falls under normal physics gravity.
+
+```csharp
+private void Saltar()
+{
+    tiempoDesdeUltimoSalto = 0f;
+    Rigidbody2D rb = GetComponent<Rigidbody2D>();
+    rb.AddForce(Vector2.up * salto, ForceMode2D.Impulse);
+}
+```
+
+The full `Update()` loop — timer check, patrol movement, and direction-flip — looks like this:
+
+```csharp
+private void Update()
+{
+    tiempoDesdeUltimoSalto += Time.deltaTime;
+
+    if (tiempoDesdeUltimoSalto >= intervaloDeSalto)
+    {
+        Saltar();
+    }
+
+    Vector3 newPosition = transform.position + Vector3.right * speed * direction * Time.deltaTime;
+
+    if (Mathf.Abs(newPosition.x - startPosition.x) > distance)
+    {
+        direction *= -1;
+    }
+
+    if (direction == 1) { enemy_tr.rotation = new Quaternion(0, 0f, 0, 0);   }
+    else                { enemy_tr.rotation = new Quaternion(0, 180f, 0, 0); }
+
+    transform.position = newPosition;
+}
+```
+
+<Note>
+`BearLs` calls `GetComponent<Rigidbody2D>()` **inside** `Saltar()` rather than caching it in `Start()`. For performance on scenes with many bears, consider caching the reference in `Start()` instead.
+</Note>
+
+---
+
+## BearMenu
+
+`BearMenu` is a cosmetic script attached to the bear decoration on the main menu screen. It uses the same patrol algorithm as `EnemyMovement` but at a much lower speed, creating a gentle back-and-forth idle animation. It has no damage logic, no player interaction, and no `Rigidbody2D` dependency.
+
+### Public Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `speed` | `float` | `0.3f` | Slow patrol speed; keeps the animation subtle in the background. |
+| `distance` | `float` | `2.0f` | Tight patrol range to keep the bear near its menu placement. |
+
+The `Update()` logic is identical to `EnemyMovement.Update()` — `newPosition` is computed, the direction reverses at the boundary, and the Y rotation is set to face the walking direction.
+
+```csharp
+private void Update()
+{
+    Vector3 newPosition = transform.position + Vector3.right * speed * direction * Time.deltaTime;
+
+    if (Mathf.Abs(newPosition.x - startPosition.x) > distance)
+    {
+        direction *= -1;
+    }
+
+    if (direction == 1) { enemy_tr.rotation = new Quaternion(0, 0f, 0, 0);   }
+    else                { enemy_tr.rotation = new Quaternion(0, 180f, 0, 0); }
+
+    transform.position = newPosition;
+}
+```
+
+---
+
+<Tip>
+Both `distance` and `speed` on every patrol enemy are **public fields**, which means they are editable in the Unity Inspector at runtime without recompiling. Use Play Mode to tweak patrol widths and movement speeds live, then copy the values into the Prefab once you're happy with the feel.
+</Tip>

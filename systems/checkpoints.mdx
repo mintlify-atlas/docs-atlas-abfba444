@@ -1,0 +1,121 @@
+---
+title: "Checkpoint System and Progress Persistence"
+sidebarTitle: "Checkpoints"
+description: "World Bits checkpoints save player position, lives, and coin count to PlayerPrefs so progress survives scene reloads and session restarts."
+---
+
+World Bits uses Unity's `PlayerPrefs` API to persist checkpoint data between scene loads and game sessions. When the player touches a checkpoint trigger, their current world position, remaining lives, and cherry count are all written to persistent storage. On death the player is immediately repositioned to that saved location — no scene reload required in story levels — and play continues from exactly where progress was secured.
+
+## Triggering a Checkpoint
+
+Checkpoint objects carry a trigger `Collider2D` tagged **`checkpoint`**. When `PlayerLs.OnTriggerEnter2D` detects this tag it snapshots the player's current `Transform` position into the `checkpoint` `Vector3` field, forces `checkpoint.z = -2.0f` (the canonical story-level Z depth), and persists everything to `PlayerPrefs`:
+
+```csharp
+if (collision.gameObject.tag == "checkpoint")
+{
+    Debug.Log("colision con check");
+    checkpoint = transform.position;
+    checkpoint.z = -2.0f;
+    PlayerPrefs.SetFloat("checkpoint_x", checkpoint.x);
+    PlayerPrefs.SetFloat("checkpoint_y", checkpoint.y);
+    PlayerPrefs.SetFloat("checkpoint_z", checkpoint.z);
+    PlayerPrefs.SetInt("vida", vida);
+    PlayerPrefs.SetInt("monedas", monedas);
+}
+```
+
+`PlayerPrefs` writes are not explicitly flushed here — Unity flushes on application pause/quit. For immediate durability you can add `PlayerPrefs.Save()` after the block.
+
+## PlayerPrefs Keys
+
+The following keys are read and written across the player and reset systems:
+
+| Key | Type | Description |
+|---|---|---|
+| `checkpoint_x` | float | Saved X world position |
+| `checkpoint_y` | float | Saved Y world position |
+| `checkpoint_z` | float | Saved Z world position (always `-2.0`) |
+| `vida` | int | Lives remaining at the checkpoint moment |
+| `monedas` | int | Cherry count at the checkpoint moment |
+| `positionO_x` | float | Original spawn X (set in `Start()` to `-0.7244456f`) |
+| `positionO_y` | float | Original spawn Y (set in `Start()` to `-2.08f`) |
+| `positionO_z` | float | Original spawn Z (set in `Start()` to `-2.0f`) |
+| `time` | float | Timer value written by `ResetController` |
+| `TiempoMaximo` | int | Best survival time in Infinite mode |
+| `MonedasMaximas` | int | Best cherry count in Infinite mode |
+
+## Death & Respawn
+
+**Story levels (PlayerLs)** — when `vida` reaches `0` the player is teleported to the saved `checkpoint` position and `vida` is reset to `1`:
+
+```csharp
+if (vida <= 0)
+{
+    transform.position = checkpoint;
+    vida = 1;
+    contadorVidas.text = vida + "";
+}
+```
+
+Because the checkpoint `Vector3` defaults to `(0, 0, -2)` at scene start, players who die before reaching the first checkpoint respawn near the origin. To avoid this, place a checkpoint trigger very close to the default spawn position.
+
+**Infinite mode (PlayerInfinite)** — there are no checkpoints. On `vida <= 0` (from enemy or deadzone contact), best-run stats are compared and saved if improved, then the scene reloads to `"Levels"`:
+
+```csharp
+if (vida <= 0)
+{
+    if (monedas >= PlayerPrefs.GetInt("MonedasMaximas"))
+    {
+        PlayerPrefs.SetInt("MonedasMaximas", monedas);
+        PlayerPrefs.SetInt("TiempoMaximo", ((int)time));
+    }
+    PlayerPrefs.Save();
+    SceneManager.LoadScene("Levels", LoadSceneMode.Single);
+}
+```
+
+## ResetController
+
+`ResetController` is a companion component on story level scenes that lets designers (and players) wipe run progress and start fresh. It holds a direct `public PlayerLs referenciaL1` reference and overrides three fields on that instance:
+
+| Field reset | Value |
+|---|---|
+| `monedas` | `0` |
+| `vida` | `3` |
+| `time` | `300.0f` |
+
+`ResetToDefaults()` is invoked in two situations:
+
+1. **R key** — `Input.GetKeyDown(KeyCode.R)` triggers it manually.
+2. **Timer expiry** — when `((int)referenciaL1.time) == 0` in `Update()`, the method fires automatically.
+
+After resetting the in-memory values, `SavePlayerPrefs()` writes them to `PlayerPrefs`, restores the `checkpoint_*` keys from the `positionO_*` originals, calls `PlayerPrefs.Save()`, and then reloads the current active scene:
+
+```csharp
+public void ResetToDefaults()
+{
+    referenciaL1.monedas = monedas;   // 0
+    referenciaL1.vida    = vida;      // 3
+    referenciaL1.time    = time;      // 300.0f
+
+    SavePlayerPrefs();
+}
+
+private void SavePlayerPrefs()
+{
+    PlayerPrefs.SetInt("monedas",  referenciaL1.monedas);
+    PlayerPrefs.SetInt("vida",     referenciaL1.vida);
+    PlayerPrefs.SetFloat("time",   referenciaL1.time);
+    PlayerPrefs.SetFloat("checkpoint_x", PlayerPrefs.GetFloat("positionO_x"));
+    PlayerPrefs.SetFloat("checkpoint_y", PlayerPrefs.GetFloat("positionO_y"));
+    PlayerPrefs.SetFloat("checkpoint_z", PlayerPrefs.GetFloat("positionO_z"));
+    PlayerPrefs.Save();
+    SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+}
+```
+
+`ResetController` also handles **P** (pause/unpause via `Time.timeScale`) and **M** (load `"Menu"` scene), keeping all meta-controls in one place.
+
+<Warning>
+  Checkpoints only persist within story levels (Level1, Level2, Level3). Entering Infinite mode does not use the checkpoint system — `PlayerInfinite` has no checkpoint trigger handler, and dying in Infinite mode always returns the player to the `"Levels"` hub screen regardless of any saved checkpoint data.
+</Warning>

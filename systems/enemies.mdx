@@ -1,0 +1,137 @@
+---
+title: "Enemy Types and AI Behavior in World Bits"
+sidebarTitle: "Enemies"
+description: "World Bits has three enemy types: patrol walkers, a player-tracking AI, and a jumping bear. Learn their parameters, movement logic, and how to configure them."
+---
+
+World Bits features three distinct enemy archetypes that cover the main action scenarios: a simple patrol walker that guards a fixed corridor, a directional AI that actively chases the player along the X axis, and a patrolling bear that adds unpredictability with periodic jump attacks. A fourth decorative variant of the bear appears on the main menu. Each enemy is a standalone `MonoBehaviour` — there is no shared base class — making individual tuning straightforward from the Inspector.
+
+<CardGroup cols={3}>
+  <Card title="Patrol Walker" icon="arrow-right-arrow-left">
+    **EnemyMovement** — oscillates left and right over a configurable distance at a fixed speed. The simplest enemy type.
+  </Card>
+  <Card title="Player-Tracking AI" icon="crosshairs">
+    **EnemyAI** — moves toward the player's X position every frame using `Vector2.MoveTowards`, always keeping its own Y.
+  </Card>
+  <Card title="Jumping Bear" icon="paw">
+    **BearLs** — combines the patrol pattern with a Rigidbody2D impulse jump fired on a timed interval, making it harder to avoid.
+  </Card>
+</CardGroup>
+
+## Patrol Walker (EnemyMovement)
+
+The `EnemyMovement` script records its starting position in `Start()` and oscillates around that point each frame.
+
+**Parameters**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `speed` | float | `1.1f` | Units per second the enemy travels |
+| `distance` | float | `5.0f` | Max deviation from `startPosition` before reversing |
+
+**Logic** — each `Update()` call computes `newPosition` by adding `Vector3.right * speed * direction * Time.deltaTime`. If `Mathf.Abs(newPosition.x - startPosition.x) > distance`, `direction` is flipped by multiplying by `-1`. The sprite is then rotated: `direction == 1` yields `Quaternion(0, 180, 0, 0)` (facing right); otherwise `Quaternion(0, 0, 0, 0)` (facing left).
+
+```csharp
+private void Update()
+{
+    // Calcula la nueva posición
+    Vector3 newPosition = transform.position + Vector3.right * speed * direction * Time.deltaTime;
+    // Si se excede la distancia en la dirección actual, cambia la dirección
+    if (Mathf.Abs(newPosition.x - startPosition.x) > distance)
+    {
+        direction *= -1;
+    }
+    if (direction == 1) { enemy_tr.rotation = new Quaternion(0, 180f, 0, 0); }
+    else
+    {
+        enemy_tr.rotation = new Quaternion(0, 0f, 0, 0);
+    }
+
+    // Actualiza la posición del enemigo
+    transform.position = newPosition;
+}
+```
+
+## Player-Tracking AI (EnemyAI)
+
+`EnemyAI` is the only enemy that reacts directly to player position. It requires a public `Transform player` reference to be assigned in the Inspector.
+
+**Parameters**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `velocidadEnemigo` | float | `1.0f` | Tracking speed (units per second) |
+| `player` | Transform | *(Inspector)* | The player's Transform to pursue |
+
+**Logic** — `Vector2.MoveTowards` is called with the current position, a target of `(player.position.x, transform.position.y)`, and a step of `velocidadEnemigo * Time.deltaTime`. This keeps the enemy locked to its own Y, so it slides along the ground toward the player without any gravity effects from the move call. Sprite flip mirrors `EnemyMovement`: `player.position.x > transform.position.x` → face right (`Quaternion(0, 180, 0, 0)`); otherwise face left.
+
+```csharp
+void Update()
+{
+    transform.position = Vector2.MoveTowards(
+        transform.position,
+        new Vector2(player.position.x, transform.position.y),
+        velocidadEnemigo * Time.deltaTime);
+
+    if (player.position.x > transform.position.x)
+    {
+        enemy.rotation = new Quaternion(0, 180f, 0, 0);
+    }
+    else
+    {
+        enemy.rotation = new Quaternion(0, 0f, 0, 0);
+    }
+}
+```
+
+## Jumping Bear (BearLs)
+
+`BearLs` extends the patrol pattern with a periodic jump impulse, making the bear harder to dodge than a flat walker.
+
+**Parameters**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `salto` | float | `7.5f` | Upward impulse force magnitude |
+| `speed` | float | `1.0f` | Patrol movement speed |
+| `distance` | float | `5.0f` | Max patrol deviation from start |
+| `intervaloDeSalto` | float | `3.0f` | Seconds between each jump |
+
+**Patrol** — identical logic to `EnemyMovement`, except `BearLs` starts with `direction = -1` (initially moving left). Note that the sprite flip assignment is inverted relative to `EnemyMovement`: here `direction == 1` maps to `Quaternion(0, 0, 0, 0)` and `direction == -1` to `Quaternion(0, 180, 0, 0)`.
+
+**Periodic jump** — `tiempoDesdeUltimoSalto` accumulates `Time.deltaTime` each frame. When it reaches `intervaloDeSalto`, `Saltar()` is called:
+
+```csharp
+private void Saltar()
+{
+    // Reinicia el tiempo desde el último salto
+    tiempoDesdeUltimoSalto = 0f;
+
+    Rigidbody2D rb = GetComponent<Rigidbody2D>();
+    rb.AddForce(Vector2.up * salto, ForceMode2D.Impulse);
+}
+```
+
+`ForceMode2D.Impulse` delivers the force as an instant velocity change, so the bear's jump height is consistent regardless of frame rate.
+
+## BearMenu
+
+`BearMenu` is a purely decorative version of the bear that wanders back and forth on the main menu screen. It uses the same patrol algorithm as `EnemyMovement` but with much more relaxed values so it drifts gently in the background:
+
+| Field | Default |
+|---|---|
+| `speed` | `0.3f` |
+| `distance` | `2.0f` |
+
+The sprite flip convention in `BearMenu` matches `EnemyMovement` (`direction == 1` → `Quaternion(0, 0, 0, 0)`). There is no jump, no `Rigidbody2D`, and no collision logic — the `BearMenu` component is entirely visual.
+
+## Enemy Tags & Collision
+
+All gameplay enemies must be tagged **`enemigo`** for player collision detection to work. The player scripts check this tag in both `OnCollisionEnter2D` and `OnTriggerEnter2D`:
+
+- **`enemigo` contact** — deducts 1 life (`vida--`) and starts the `isHurt` invincibility window. If `vida` drops to zero the player is sent to the last checkpoint (story) or the scene reloads (Infinite mode).
+- **`deadzone` contact** — instantly sets `vida = 0`, bypassing the normal decrement, then applies the same zero-life consequence. This covers pits and out-of-bounds areas.
+
+<Warning>
+  Enemies are not destroyed on contact with the player. There is no stomping or projectile mechanic — any touch with an `enemigo`-tagged object costs a life (subject to the invincibility window).
+</Warning>

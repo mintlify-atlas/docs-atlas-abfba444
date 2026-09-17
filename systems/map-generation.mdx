@@ -1,0 +1,90 @@
+---
+title: "Procedural Map Generation in Infinite Mode"
+sidebarTitle: "Map Generation"
+description: "World Bits uses trigger-based map tile instantiation in Infinite mode. MapGenerator spawns new tile prefabs ahead of the player as they move forward."
+---
+
+Infinite mode cannot rely on hand-crafted, finite level geometry — the player is expected to run indefinitely, so the world must extend itself on demand. World Bits solves this with a lightweight trigger-based chaining system. Each map tile prefab contains a `MapGenerator` component positioned near its far edge; as the player reaches that edge, the component instantiates the next tile segment ahead of them and then disables itself so it never fires again. Because every spawned tile contains its own `MapGenerator`, the chain is self-sustaining and requires no central manager.
+
+## MapGenerator Script
+
+`MapGenerator` is a `MonoBehaviour` attached to a `GameObject` that has a trigger `Collider2D` (typically a thin vertical box) placed near the right edge of each tile. When the player (tagged **`Player`**) enters this trigger, the script instantiates the `map` prefab at a calculated position ahead of the current tile. A `generate` flag guards against double-firing if the player lingers in the trigger zone.
+
+The spawn position is computed as:
+
+```
+new Vector3(transform.position.x + espacioMap, 8.443801f, 1.838953f)
+```
+
+The Y value (`8.443801f`) and Z value (`1.838953f`) are hardcoded to match the tile prefab's expected world origin, so the instantiated segment aligns perfectly with the rest of the geometry.
+
+## Parameters
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `map` | `GameObject` | *(prefab ref)* | The tile-map prefab to instantiate |
+| `espacioMap` | `float` | `70.4698f` | Horizontal offset (units) from this trigger to the new tile's origin |
+| `generate` | `bool` | `false` | Prevents duplicate spawning; set to `true` after the first trigger |
+
+`generate` defaults to `false` on the prefab asset. When `MapGenerator` fires it flips `generate` to `true`, so subsequent `OnTriggerEnter2D` calls from the same player pass are ignored. Because each *newly instantiated* tile carries its own fresh `MapGenerator` component (default `generate = false`), the next tile in the chain is always ready to fire.
+
+## Full MapGenerator Class
+
+```csharp
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class MapGenerator : MonoBehaviour
+{
+    public GameObject map;
+    public float espacioMap = 70.4698f;
+    public bool generate = false;
+
+    private void OnTriggerEnter2D(Collider2D collision)
+    {
+        if (collision.gameObject.tag == "Player")
+        {
+            if (!generate)
+            {
+                Instantiate(map,
+                    new Vector3(transform.position.x + espacioMap, 8.443801f, 1.838953f),
+                    transform.rotation);
+                generate = true;
+            }
+        }
+    }
+}
+```
+
+## How Tiles Chain
+
+The self-extending chain works because the `map` prefab passed to `Instantiate` is the same tile prefab that already contains a `MapGenerator` component near its own far edge. When that instantiated tile's `MapGenerator` trigger is reached by the player, it fires and spawns the next copy, and so on indefinitely:
+
+```
+[Tile A] ──trigger──> spawns [Tile B]
+                              [Tile B] ──trigger──> spawns [Tile C]
+                                                           [Tile C] ──trigger──> spawns [Tile D]  ...
+```
+
+Old tiles that are far behind the player remain in the scene (they are never destroyed by `MapGenerator`). If memory pressure is a concern, a separate cleanup script can destroy tiles whose X position falls more than one `espacioMap` unit behind the player.
+
+## SpawnerMonedas (Coin Spawning)
+
+Each tile prefab includes one or more `SpawnerMonedas` components that randomly populate cherry collectibles at scene load. In `Start()`, the spawner rolls a random integer and conditionally instantiates a coin prefab at its own position:
+
+```csharp
+void Start()
+{
+    if (Random.Range(1, 6) < 4)
+    {
+        Instantiate(moneda, transform.position, transform.rotation);
+    }
+}
+```
+
+`Random.Range(1, 6)` returns an integer in `[1, 5]`. Values `1`, `2`, and `3` are less than `4`, so approximately **60 %** of spawner positions produce a cherry. This creates natural variation in coin density across every generated tile without any designer intervention.
+
+<Tip>
+  When building a new map segment prefab, make sure the `MapGenerator` component on that prefab has `generate` left at its default `false`. If you accidentally set it to `true` in the prefab asset, the trigger will never fire when that tile is instantiated at runtime and the chain will break.
+</Tip>

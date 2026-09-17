@@ -1,0 +1,90 @@
+---
+title: "Dynamic Day/Night Color Cycle System"
+sidebarTitle: "Day/Night Cycle"
+description: "World Bits fades background sprites through four color phases — morning, day, afternoon, and night — using EventosController and Unity's Color.Lerp."
+---
+
+World Bits creates a living sense of time by smoothly cycling the tint of every background sprite through four distinct color phases: a warm yellow morning, a bright midday white, a pink/magenta afternoon, and a deep purple night. The effect is handled entirely by the `EventosController` script, which runs on a single persistent `GameObject` in the scene and touches every background renderer via Unity's `Color.Lerp`, requiring no texture swaps or shader changes.
+
+## How It Works
+
+On `Start()`, `EventosController` uses `GameObject.FindGameObjectsWithTag("back")` to collect every background `GameObject` in the scene and extract their `SpriteRenderer` components into a cached array:
+
+```csharp
+spriteRenderers = GameObject.FindGameObjectsWithTag("back")
+    .Select(go => go.GetComponent<SpriteRenderer>())
+    .ToArray();
+```
+
+Each `Update()` frame the script increments an internal timer, derives a normalised `t` value via `Mathf.PingPong`, and applies `Color.Lerp` between the appropriate pair of phase colors to every renderer in that array.
+
+## Color Phases
+
+The four phase colors are defined as private `Color` fields with the following RGBA values:
+
+| Phase | Field | RGBA | Appearance |
+|---|---|---|---|
+| Morning (Mañana) | `colorMañana` | `(1.0, 1.0, 0.658, 1.0)` | Warm yellow |
+| Day (Día) | `colorDia` | `(1.0, 1.0, 1.0, 1.0)` | Full white (no tint) |
+| Afternoon (Tarde) | `colorTarde` | `(1.0, 0.658, 0.961, 1.0)` | Pink / magenta |
+| Night (Noche) | `colorNoche` | `(0.451, 0.361, 0.722, 1.0)` | Deep purple |
+
+All alpha values are `1.0` — the cycle only affects RGB tint, never transparency.
+
+## Cycle Timing
+
+The cycle is driven by a single public float `tiempoTotal`, which starts at `40f` and accumulates `Time.deltaTime` every frame. A normalised oscillation value `t` is computed with:
+
+```
+t = Mathf.PingPong(tiempoTotal / 120f, 1f)
+```
+
+`Mathf.PingPong` returns a value that bounces between `0` and `1`, so the cycle reverses direction naturally — no explicit reset logic is needed. The `t` value is then mapped to one of three lerp transitions:
+
+| `t` range | Transition |
+|---|---|
+| `0 ≤ t ≤ 0.33` | Morning → Day: `Color.Lerp(colorMañana, colorDia, t)` |
+| `0.33 < t ≤ 0.66` | Day → Afternoon: `Color.Lerp(colorDia, colorTarde, (t - 0.33f) / 0.33f)` |
+| `t > 0.66` | Afternoon → Night: `Color.Lerp(colorTarde, colorNoche, (t - 0.66f) / 0.34f)` |
+
+Each sub-range is re-normalised to `[0, 1]` so the lerp is always a smooth 0→1 progression within its segment.
+
+## Update() Method
+
+```csharp
+private void Update()
+{
+    tiempoTotal += Time.deltaTime;
+    float t = Mathf.PingPong(tiempoTotal / 120f, 1f); // Valor entre 0 y 1 para el ciclo
+
+    foreach (SpriteRenderer spriteRenderer in spriteRenderers)
+    {
+        Color colorActual = Color.Lerp(colorMañana, colorDia, t);
+        if (t > 0.33f && t <= 0.66f)
+        {
+            colorActual = Color.Lerp(colorDia, colorTarde, (t - 0.33f) / 0.33f);
+        }
+        else if (t > 0.66f)
+        {
+            colorActual = Color.Lerp(colorTarde, colorNoche, (t - 0.66f) / 0.34f);
+        }
+
+        spriteRenderer.color = colorActual;
+    }
+}
+```
+
+The `foreach` loop applies the same `colorActual` to every renderer simultaneously, so all background sprites change in perfect unison.
+
+## Configuration
+
+Two values control the speed of the full day/night cycle:
+
+- **`tiempoTotal` initial value** — set to `40f` by default, meaning the cycle starts 40 seconds into the first phase rather than at the very beginning of morning. Increase this to start closer to day; decrease (or set to `0`) to begin at first light.
+- **The `/120f` divisor** — dividing by a larger number stretches the cycle (a full `PingPong` period takes longer); dividing by a smaller number accelerates it. For a very fast debug cycle try `/20f`; for a slow cinematic cycle try `/300f`.
+
+Both values are set directly in the Inspector (`tiempoTotal` is `public`) or in the script itself.
+
+<Note>
+  Every background `GameObject` that should participate in the color cycle **must** be tagged `back`. Objects missing this tag will not be found by `FindGameObjectsWithTag` during `Start()` and their `SpriteRenderer` tint will remain unchanged throughout the cycle.
+</Note>

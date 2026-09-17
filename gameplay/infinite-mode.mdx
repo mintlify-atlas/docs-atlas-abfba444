@@ -1,0 +1,78 @@
+---
+title: "Infinite Runner Mode: Endless Platformer Challenge"
+sidebarTitle: "Infinite Mode"
+description: "World Bits Infinite mode is an endless runner with procedurally extended tile maps. Survive as long as possible and beat your cherry count high score."
+---
+
+The **Infinite** scene is a standalone endless-runner experience that lives entirely outside the story level loop. Unlike the three story stages, there is no countdown timer, no cherry threshold to meet, and no exit trigger — the only goal is to survive as long as possible and collect more cherries than your previous best. When you die the run ends immediately, your score is saved if it's a new record, and the game drops you back at the `Levels` hub.
+
+## How It Works
+
+The Infinite scene uses a **procedural tile-map extension** system driven by the `MapGenerator` script. The starting map segment is placed in the scene at editor time. Each segment contains a trigger zone at its far right edge. When the player character (tagged `"Player"`) enters that trigger zone, `MapGenerator.OnTriggerEnter2D` spawns the next segment:
+
+```csharp
+private void OnTriggerEnter2D(Collider2D collision)
+{
+    if (collision.gameObject.tag == "Player")
+    {
+        if (!generate)
+        {
+            Instantiate(map, new Vector3(transform.position.x + espacioMap, 8.443801f, 1.838953f), transform.rotation);
+            generate = true;
+        }
+    }
+}
+```
+
+The `map` prefab is instantiated at `transform.position.x + espacioMap`, where `espacioMap` defaults to `70.4698f` world units. The `generate` boolean flag is set to `true` after the first spawn, preventing the same trigger zone from spawning a second segment if the player lingers near it. This creates an ever-extending platform without any manual level design beyond the initial prefab.
+
+## Scoring & High Score
+
+The Infinite scene tracks two metrics in real time:
+
+- **Time** — `time` starts at `0.0f` and increases by `Time.deltaTime` every frame (`time += Time.deltaTime`). The integer value is written each frame to the UI `Text` object tagged `ContadorTiempo`.
+- **Cherries** — each cherry (tagged `Moneda`) collected increments `monedas` by 1, destroys the cherry `GameObject`, and updates the UI `Text` tagged `ContadorMonedas`.
+
+When the run ends (lives reach 0), `PlayerInfinite` compares `monedas` against the stored record before changing scenes:
+
+```csharp
+if (monedas >= PlayerPrefs.GetInt("MonedasMaximas"))
+{
+    PlayerPrefs.SetInt("MonedasMaximas", monedas);
+    PlayerPrefs.SetInt("TiempoMaximo", ((int)time));
+}
+PlayerPrefs.Save();
+SceneManager.LoadScene("Levels", LoadSceneMode.Single);
+```
+
+The new score overwrites the old one only when `monedas >= MonedasMaximas`, so ties also update the record (and replace the stored time with the current run's time).
+
+## Game Over
+
+The run ends as soon as `vida` drops to 0 or below. This can happen in two ways:
+
+- **Enemy contact** — colliding with or entering a trigger tagged `enemigo` deducts one life. The player is then invincible for `hurtDuration = 1.0f` seconds (`isHurt = true`) to prevent multiple rapid deductions.
+- **Deadzone** — entering a trigger tagged `deadzone` (a pit or void at the bottom of the map) sets `vida = 0` directly, which immediately triggers the end-of-run logic regardless of remaining lives.
+
+Unlike story levels, there is **no checkpoint respawn** in Infinite mode. Once `vida <= 0`, the run is over, the high score check runs, and the `Levels` scene is loaded.
+
+## High Score Display
+
+After returning from an Infinite run, the `Levels` hub reads the saved scores and displays them on screen. `PlayerLevels.Start()` runs this on scene load:
+
+```csharp
+Rc = GameObject.FindGameObjectWithTag("Rcerezas").GetComponent<TextMesh>();
+Rt = GameObject.FindWithTag("Rtiempo").GetComponent<TextMesh>();
+
+if (PlayerPrefs.GetInt("MonedasMaximas") != 0)
+{
+    Rc.text = PlayerPrefs.GetInt("MonedasMaximas").ToString();
+    Rt.text = PlayerPrefs.GetInt("TiempoMaximo").ToString();
+}
+```
+
+The `TextMesh` tagged `Rcerezas` shows your best cherry count and the `TextMesh` tagged `Rtiempo` shows the time (in whole seconds) recorded during that same run. The display only updates when `MonedasMaximas` is non-zero, so the widgets stay blank on a fresh save file.
+
+<Tip>
+  Cherry count is the primary high-score metric — the record only updates when `monedas >= MonedasMaximas`. Focus on collecting as many cherries as you can before your last life runs out, even if it means taking risks. A run with more cherries but less time will still overwrite a slower record.
+</Tip>

@@ -1,0 +1,537 @@
+---
+title: "Player Scripts API: PlayerLs, PlayerInfinite, PlayerLevels"
+sidebarTitle: "Player Scripts"
+description: "Full reference for all three World Bits player MonoBehaviours — public fields, private state, Unity lifecycle methods, and key logic explained."
+---
+
+World Bits uses three distinct player MonoBehaviours, each tailored to a specific mode of play. **PlayerLs** drives the timed level scenes (Level1, Level2, Level3) with checkpoint persistence and transport portals. **PlayerInfinite** powers the endless runner scene, counting elapsed time upward and saving high scores on death. **PlayerLevels** is a lightweight selection controller used only on the hub `Levels` scene, where the player walks between doors and presses **Up Arrow** to enter a world. All three share the same control scheme (arrows + C to jump, X to sprint) and require a `Rigidbody2D` and `Animator` on the same GameObject.
+
+---
+
+## PlayerLs
+
+`PlayerLs` is the main gameplay script attached to the player GameObject in every numbered level scene (Level1, Level2, Level3). It manages a 300-second countdown, coin collection, a three-strike life system with invincibility frames, checkpoint saving via `PlayerPrefs`, staircase climbing, and a warp portal that teleports the player to world position `(127.8, −2.16)`.
+
+### Public Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `velocidad` | `float` | `3.5f` | Base horizontal walk speed (units/s). |
+| `velocidadCorrer` | `float` | `5f` | Sprint speed applied while **X** is held. |
+| `salto` | `float` | `6.5f` | Vertical impulse applied on jump (**C** key). |
+| `monedas` | `int` | `0` | Current coin count; compared against level thresholds to unlock the exit. |
+| `vida` | `int` | `3` | Current lives; decremented on enemy/hazard contact. |
+| `time` | `float` | `300.0f` | Remaining seconds; counts down each frame. Exposed so `ResetController` can read and reset it. |
+| `checkpoint` | `Vector3` | _(set in Start)_ | World position the player respawns at after losing all lives. |
+| `originalPosition` | `Vector2` | _(Inspector)_ | Reference to the spawn origin (also stored in `PlayerPrefs`). |
+| `camera_tr` | `Transform` | _(Inspector)_ | Reference to the camera transform, moved alongside the player during a warp. |
+
+### Private / State Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `tocandoSuelo` | `bool` | `true` when the player is standing on a `Suelo`-tagged collider; gates jump input. |
+| `isHurt` | `bool` | Set to `true` immediately after taking damage; suppresses further damage for `hurtDuration` seconds. |
+| `hurtDuration` | `float` | Invincibility window in seconds (`1.0f`). |
+| `hurtTimer` | `float` | Accumulates `Time.deltaTime` while `isHurt` is `true`. |
+| `transport` | `bool` | Becomes `true` while overlapping a `transport`-tagged trigger. |
+| `stair` | `bool` | Becomes `true` while overlapping a `stair`-tagged trigger. |
+| `player_rb` | `Rigidbody2D` | Cached `Rigidbody2D` component. |
+| `player_tr` | `Transform` | Cached `Transform` component. |
+| `player_anim` | `Animator` | Cached `Animator` component. |
+| `contadorVidas` | `Text` | UI `Text` element found via the `vida` tag at runtime. |
+
+### Key Methods
+
+#### `Move()`
+
+Reads directional input every frame and drives horizontal velocity directly on the `Rigidbody2D`. Holding **X** switches `velocidad` to `velocidadCorrer`; releasing it resets to `3.5f`. The `run` animator bool is toggled accordingly, and the Transform's Y rotation is flipped to mirror the sprite left/right. Jump input (**C**) is only accepted when `tocandoSuelo` is `true`, preventing double-jumps.
+
+```csharp
+private void Move()
+{
+    if (Input.GetKey(KeyCode.X)) { velocidad = velocidadCorrer; } else { velocidad = 3.5f; }
+
+    if (Input.GetKey(KeyCode.RightArrow))
+    {
+        player_rb.velocity = new Vector2(velocidad, player_rb.velocity.y);
+        player_tr.rotation = new Quaternion(0, 0f, 0, 0);
+        player_anim.SetBool("run", true);
+    }
+    else if (Input.GetKey(KeyCode.LeftArrow))
+    {
+        player_rb.velocity = new Vector2(-velocidad, player_rb.velocity.y);
+        player_tr.rotation = new Quaternion(0, 180f, 0, 0);
+        player_anim.SetBool("run", true);
+    }
+    else
+    {
+        player_anim.SetBool("run", false);
+    }
+
+    if (Input.GetKey(KeyCode.C) && tocandoSuelo)
+    {
+        player_rb.velocity = new Vector2(player_rb.velocity.x, salto);
+        tocandoSuelo = false;
+        player_anim.SetBool("jump", true);
+    }
+}
+```
+
+#### `PlayerHurt()`
+
+Runs every frame. When `isHurt` is `true`, it accumulates `Time.deltaTime` into `hurtTimer`. Once `hurtTimer` reaches `hurtDuration` (1 second), the hurt state is cleared and the `hurt` animator bool is reset to `false`.
+
+```csharp
+private void PlayerHurt()
+{
+    if (isHurt)
+    {
+        hurtTimer += Time.deltaTime;
+
+        if (hurtTimer >= hurtDuration)
+        {
+            isHurt = false;
+            hurtTimer = 0.0f;
+            player_anim.SetBool("hurt", false);
+        }
+    }
+}
+```
+
+#### `Transport()`
+
+Called from `Update()`. If `transport` is `true` and **Up Arrow** is held, the player (and camera) are instantly moved to world coordinates `(127.8, −2.16, −2)`. If `stair` is `true` and **Up Arrow** is held, vertical velocity is set to `velocidad`, simulating climbing.
+
+```csharp
+public void Transport()
+{
+    if (transport && Input.GetKey(KeyCode.UpArrow))
+    {
+        transform.position = new Vector3(127.8f, -2.16f, -2f);
+        camera_tr.position = new Vector3(127.8f, -2.16f, -2f);
+    }
+    if (stair && Input.GetKey(KeyCode.UpArrow))
+    {
+        player_rb.velocity = new Vector2(player_rb.velocity.x, velocidad);
+        tocandoSuelo = false;
+    }
+}
+```
+
+#### `TextTime()`
+
+Decrements `time` by `Time.deltaTime` each frame and updates the `ContadorTiempo`-tagged UI `Text`. The timer stops naturally when `time` reaches zero; `ResetController` watches for this and calls `ResetToDefaults()`.
+
+```csharp
+private void TextTime()
+{
+    if (time >= 0)
+    {
+        time -= Time.deltaTime;
+        Text contadorTiempo = GameObject.FindWithTag("ContadorTiempo").GetComponent<Text>();
+        contadorTiempo.text = ((int)time) + "";
+    }
+}
+```
+
+#### `OnCollisionEnter2D()`
+
+Handles physical collisions with `Suelo` (resets grounded state and clears jump/hurt animator bools) and `enemigo` (deducts a life; if `vida` drops to zero the player is teleported to `checkpoint` and `vida` is restored to 1).
+
+```csharp
+private void OnCollisionEnter2D(Collision2D collision)
+{
+    if (collision.gameObject.tag == "Suelo")
+    {
+        tocandoSuelo = true;
+        player_anim.SetBool("jump", false);
+        player_anim.SetBool("hurt", false);
+    }
+
+    if (collision.gameObject.tag == "enemigo")
+    {
+        if (!isHurt)
+        {
+            vida--;
+            contadorVidas.text = vida + "";
+            if (vida <= 0)
+            {
+                transform.position = checkpoint;
+                vida = 1;
+                contadorVidas.text = vida + "";
+            }
+            else
+            {
+                isHurt = true;
+                player_anim.SetBool("hurt", true);
+            }
+        }
+    }
+}
+```
+
+#### `OnTriggerEnter2D()`
+
+Handles overlapping triggers. Key behaviours:
+- **Moneda** — increments `monedas` and destroys the coin object.
+- **End** — loads the `Levels` scene if the player has exactly 12, 22, or 34 coins.
+- **heart** — increments `vida` and destroys the heart pickup.
+- **enemigo / deadzone** — same life-deduction logic as the collision handler; `deadzone` immediately sets `vida = 0`.
+- **checkpoint** — saves the current position and player state to `PlayerPrefs`.
+- **transport / stair** — sets the respective bool flags read by `Transport()`.
+
+```csharp
+private void OnTriggerEnter2D(Collider2D collision)
+{
+    if (collision.gameObject.tag == "Moneda")
+    {
+        monedas++;
+        Destroy(collision.gameObject);
+        Text contadorMonedas = GameObject.FindWithTag("ContadorMonedas").GetComponent<Text>();
+        contadorMonedas.text = monedas + "";
+    }
+
+    if (((monedas == 12) || (monedas == 22) || (monedas == 34)) && collision.gameObject.tag == "End")
+    {
+        SceneManager.LoadScene("Levels", LoadSceneMode.Single);
+    }
+
+    if (collision.gameObject.tag == "checkpoint")
+    {
+        checkpoint = transform.position;
+        checkpoint.z = -2.0f;
+        PlayerPrefs.SetFloat("checkpoint_x", checkpoint.x);
+        PlayerPrefs.SetFloat("checkpoint_y", checkpoint.y);
+        PlayerPrefs.SetFloat("checkpoint_z", checkpoint.z);
+        PlayerPrefs.SetInt("vida", vida);
+        PlayerPrefs.SetInt("monedas", monedas);
+    }
+    // ... transport and stair flags set here
+}
+```
+
+---
+
+## PlayerInfinite
+
+`PlayerInfinite` is attached to the player in the `Infinite` endless runner scene. Unlike `PlayerLs`, its timer counts **up** from zero, recording how long the player has survived. When the player runs out of lives, the script compares the current coin count against the saved high score in `PlayerPrefs` and updates the record before loading `Levels`.
+
+### Public Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `velocidad` | `float` | `3.5f` | Base horizontal walk speed. |
+| `velocidadCorrer` | `float` | `5f` | Sprint speed applied while **X** is held. |
+| `salto` | `float` | `6.5f` | Jump impulse applied on **C**. |
+| `monedas` | `int` | `0` | Coins collected in the current run. |
+| `vida` | `int` | `3` | Current lives. |
+| `time` | `float` | `0.0f` | Elapsed seconds; counts upward each frame. |
+| `checkpoint` | `Vector3` | _(set in Start)_ | Respawn position (z fixed to `−2.0f`). |
+| `originalPosition` | `Vector2` | _(Inspector)_ | Spawn origin reference. |
+| `camera_tr` | `Transform` | _(Inspector)_ | Camera transform reference. |
+
+### Private / State Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `tocandoSuelo` | `bool` | `true` when standing on `Suelo`; gates jumps. |
+| `isHurt` | `bool` | Invincibility flag set after taking damage. |
+| `hurtDuration` | `float` | Invincibility window (`1.0f` s). |
+| `hurtTimer` | `float` | Timer accumulator for hurt state. |
+| `stair` | `bool` | `true` while inside a `stair`-tagged trigger. |
+| `tiempoMaximo` | `float` | Best survival time loaded from `PlayerPrefs` at Start. |
+| `monedasMaximas` | `float` | Best coin count loaded from `PlayerPrefs` at Start. |
+
+### Key Methods
+
+#### `Move()`
+
+Identical behaviour to `PlayerLs.Move()` — arrow keys set horizontal velocity, **X** toggles sprint, **C** jumps when grounded.
+
+```csharp
+private void Move()
+{
+    if (Input.GetKey(KeyCode.X)) { velocidad = velocidadCorrer; } else { velocidad = 3.5f; }
+
+    if (Input.GetKey(KeyCode.RightArrow))
+    {
+        player_rb.velocity = new Vector2(velocidad, player_rb.velocity.y);
+        player_tr.rotation = new Quaternion(0, 0f, 0, 0);
+        player_anim.SetBool("run", true);
+    }
+    else if (Input.GetKey(KeyCode.LeftArrow))
+    {
+        player_rb.velocity = new Vector2(-velocidad, player_rb.velocity.y);
+        player_tr.rotation = new Quaternion(0, 180f, 0, 0);
+        player_anim.SetBool("run", true);
+    }
+    else
+    {
+        player_anim.SetBool("run", false);
+    }
+
+    if (Input.GetKey(KeyCode.C) && tocandoSuelo)
+    {
+        player_rb.velocity = new Vector2(player_rb.velocity.x, salto);
+        tocandoSuelo = false;
+        player_anim.SetBool("jump", true);
+    }
+}
+```
+
+#### `PlayerHurt()`
+
+Same invincibility-frame logic as `PlayerLs.PlayerHurt()` — accumulates `hurtTimer` and clears `isHurt` after 1 second.
+
+```csharp
+private void PlayerHurt()
+{
+    if (isHurt)
+    {
+        hurtTimer += Time.deltaTime;
+        if (hurtTimer >= hurtDuration)
+        {
+            isHurt = false;
+            hurtTimer = 0.0f;
+            player_anim.SetBool("hurt", false);
+        }
+    }
+}
+```
+
+#### `Stair()`
+
+When `stair` is `true` and **Up Arrow** is held, vertical velocity is set to `velocidad` so the player climbs the staircase object.
+
+```csharp
+public void Stair()
+{
+    if (stair && Input.GetKey(KeyCode.UpArrow))
+    {
+        player_rb.velocity = new Vector2(player_rb.velocity.x, velocidad);
+        tocandoSuelo = false;
+    }
+}
+```
+
+#### `TextTime()`
+
+Adds `Time.deltaTime` to `time` every frame (counting up) and updates the `ContadorTiempo` UI label.
+
+```csharp
+private void TextTime()
+{
+    time += Time.deltaTime;
+    Text contadorTiempo = GameObject.FindWithTag("ContadorTiempo").GetComponent<Text>();
+    contadorTiempo.text = ((int)time) + "";
+}
+```
+
+#### `OnCollisionEnter2D()`
+
+Resets `tocandoSuelo` on `Suelo` contact. Enemy collisions deduct a life; at zero lives the run ends (no respawn in infinite mode).
+
+```csharp
+private void OnCollisionEnter2D(Collision2D collision)
+{
+    if (collision.gameObject.tag == "Suelo")
+    {
+        tocandoSuelo = true;
+        player_anim.SetBool("jump", false);
+        player_anim.SetBool("hurt", false);
+    }
+
+    if (collision.gameObject.tag == "enemigo")
+    {
+        if (!isHurt)
+        {
+            vida--;
+            contadorVidas.text = vida + "";
+            if (vida <= 0)
+            {
+                transform.position = checkpoint;
+                vida = 1;
+                contadorVidas.text = vida + "";
+            }
+            else
+            {
+                isHurt = true;
+                player_anim.SetBool("hurt", true);
+            }
+        }
+    }
+}
+```
+
+#### `OnTriggerEnter2D()`
+
+Handles coins, hearts, enemies, deadzones, and stair flags. On a run-ending death (`vida <= 0`) it compares `monedas` against `PlayerPrefs.GetInt("MonedasMaximas")`; if the current run beats the record, both `MonedasMaximas` and `TiempoMaximo` are updated before the game navigates back to `Levels`.
+
+```csharp
+private void OnTriggerEnter2D(Collider2D collision)
+{
+    if (collision.gameObject.tag == "Moneda")
+    {
+        monedas++;
+        Destroy(collision.gameObject);
+        Text contadorMonedas = GameObject.FindWithTag("ContadorMonedas").GetComponent<Text>();
+        contadorMonedas.text = monedas + "";
+    }
+
+    if (collision.gameObject.tag == "enemigo" || collision.gameObject.tag == "deadzone")
+    {
+        if (collision.gameObject.tag == "deadzone") { vida = 0; }
+
+        if (!isHurt)
+        {
+            vida--;
+            contadorVidas.text = vida + "";
+            if (vida <= 0)
+            {
+                if (monedas >= PlayerPrefs.GetInt("MonedasMaximas"))
+                {
+                    PlayerPrefs.SetInt("MonedasMaximas", monedas);
+                    PlayerPrefs.SetInt("TiempoMaximo", ((int)time));
+                }
+                PlayerPrefs.Save();
+                SceneManager.LoadScene("Levels", LoadSceneMode.Single);
+            }
+            else
+            {
+                isHurt = true;
+                player_anim.SetBool("hurt", true);
+            }
+        }
+    }
+
+    if (collision.gameObject.tag == "stair") { stair = true; }
+    else { stair = false; }
+}
+```
+
+---
+
+## PlayerLevels
+
+`PlayerLevels` is a lightweight script used exclusively in the `Levels` hub scene — the world map where the player walks between level entrances. It has no life system or coin collection; its sole job is locomotion and detecting which level door the player is standing at so the correct scene can be loaded with **Up Arrow**.
+
+### Public Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `velocidad` | `float` | `2f` | Base horizontal walk speed. |
+| `velocidadCorrer` | `float` | `3.5f` | Sprint speed applied while **X** is held. |
+| `salto` | `float` | `5f` | Jump impulse on **C**. |
+| `Rc` | `TextMesh` | _(found via tag `Rcerezas`)_ | 3D text mesh displaying the best cherry (coin) score from `PlayerPrefs`. |
+| `Rt` | `TextMesh` | _(found via tag `Rtiempo`)_ | 3D text mesh displaying the best survival time from `PlayerPrefs`. |
+
+### Private / State Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `tocandoSuelo` | `bool` | Ground contact flag; gates jumps. |
+| `ActiveNv` | `bool[4]` | Index 0 = `flappymode`, 1 = `level1`, 2 = `level2`, 3 = `level3`. Set in `OnTriggerEnter2D`. |
+
+### Key Methods
+
+#### `Move()`
+
+Same directional movement pattern as the other player scripts. Additionally, pressing **M** from anywhere on the Levels scene immediately loads the `Menu` scene.
+
+```csharp
+private void Move()
+{
+    if (Input.GetKey(KeyCode.X)) { velocidad = velocidadCorrer; } else { velocidad = 2f; }
+
+    if (Input.GetKey(KeyCode.RightArrow))
+    {
+        player_rb.velocity = new Vector2(velocidad, player_rb.velocity.y);
+        player_tr.rotation = new Quaternion(0, 0f, 0, 0);
+        player_anim.SetBool("run", true);
+    }
+    else if (Input.GetKey(KeyCode.LeftArrow))
+    {
+        player_rb.velocity = new Vector2(-velocidad, player_rb.velocity.y);
+        player_tr.rotation = new Quaternion(0, 180f, 0, 0);
+        player_anim.SetBool("run", true);
+    }
+    else { player_anim.SetBool("run", false); }
+
+    if (Input.GetKey(KeyCode.C) && tocandoSuelo)
+    {
+        player_rb.velocity = new Vector2(player_rb.velocity.x, salto);
+        tocandoSuelo = false;
+        player_anim.SetBool("jump", true);
+    }
+    if (Input.GetKey(KeyCode.M))
+    {
+        SceneManager.LoadScene("Menu", LoadSceneMode.Single);
+    }
+}
+```
+
+#### `LoadScene()`
+
+Called from `Update()` every frame. Checks each slot in `ActiveNv`; if the corresponding slot is `true` and **Up Arrow** is pressed, the matching scene is loaded.
+
+| `ActiveNv` index | Tag that sets it | Scene loaded |
+|---|---|---|
+| `0` | `flappymode` | `Infinite` |
+| `1` | `level1` | `Level1` |
+| `2` | `level2` | `Level2` |
+| `3` | `level3` | `Level3` |
+
+```csharp
+private void LoadScene()
+{
+    if (ActiveNv[0] && Input.GetKey(KeyCode.UpArrow))
+        SceneManager.LoadScene("Infinite", LoadSceneMode.Single);
+    if (ActiveNv[1] && Input.GetKey(KeyCode.UpArrow))
+        SceneManager.LoadScene("Level1", LoadSceneMode.Single);
+    if (ActiveNv[2] && Input.GetKey(KeyCode.UpArrow))
+        SceneManager.LoadScene("Level2", LoadSceneMode.Single);
+    if (ActiveNv[3] && Input.GetKey(KeyCode.UpArrow))
+        SceneManager.LoadScene("Level3", LoadSceneMode.Single);
+}
+```
+
+#### `OnCollisionEnter2D()`
+
+Only handles `Suelo` contacts to reset `tocandoSuelo` and clear jump/hurt animator bools. No damage logic exists in this script.
+
+```csharp
+private void OnCollisionEnter2D(Collision2D collision)
+{
+    if (collision.gameObject.tag == "Suelo")
+    {
+        tocandoSuelo = true;
+        player_anim.SetBool("jump", false);
+        player_anim.SetBool("hurt", false);
+    }
+}
+```
+
+#### `OnTriggerEnter2D()`
+
+Sets the appropriate `ActiveNv` slot when the player enters a level-door trigger. Each tag is mutually exclusive — entering one door resets all others to `false`.
+
+```csharp
+private void OnTriggerEnter2D(Collider2D collision)
+{
+    if (collision.gameObject.tag == "flappymode") { ActiveNv[0] = true; }
+    else { ActiveNv[0] = false; }
+    if (collision.gameObject.tag == "level1") { ActiveNv[1] = true; }
+    else { ActiveNv[1] = false; }
+    if (collision.gameObject.tag == "level2") { ActiveNv[2] = true; }
+    else { ActiveNv[2] = false; }
+    if (collision.gameObject.tag == "level3") { ActiveNv[3] = true; }
+    else { ActiveNv[3] = false; }
+}
+```
+
+---
+
+<Note>
+All three player scripts — **PlayerLs**, **PlayerInfinite**, and **PlayerLevels** — require both a **Rigidbody2D** and an **Animator** component on the same GameObject. The scripts cache these via `GetComponent<>()` in `Start()`. Missing either component will throw a `NullReferenceException` at runtime.
+</Note>

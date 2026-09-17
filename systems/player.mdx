@@ -1,0 +1,152 @@
+---
+title: "Player Movement and Physics System in World Bits"
+sidebarTitle: "Player"
+description: "How World Bits handles player movement, jumping, running, hurt state, and stair/transport triggers across PlayerLs, PlayerInfinite, and PlayerLevels scripts."
+---
+
+World Bits uses three separate player scripts depending on the active game mode. **PlayerLs** drives the player in story levels (Level1, Level2, Level3), providing a countdown timer, checkpoint saving, and transport triggers. **PlayerInfinite** takes over in Infinite mode, replacing the countdown with a count-up survival timer and swapping respawns for a full scene reload back to the level-select screen. **PlayerLevels** is a lightweight variant used only on the level-select hub scene — it has reduced speed values and no lives or coins, serving purely as a navigation character.
+
+## Speed Parameters
+
+Each script exposes three serialized floats that control how the player feels to move. The values differ between the hub and the two gameplay scripts:
+
+| Parameter | PlayerLs | PlayerInfinite | PlayerLevels |
+|---|---|---|---|
+| `velocidad` (walk speed) | `3.5f` | `3.5f` | `2.0f` |
+| `velocidadCorrer` (run speed) | `5.0f` | `5.0f` | `3.5f` |
+| `salto` (jump impulse) | `6.5f` | `6.5f` | `5.0f` |
+
+`velocidad` is the working speed variable — it is overwritten to `velocidadCorrer` while **X** is held, and reset to its base value the moment the key is released.
+
+## Movement Logic
+
+All three scripts share the same `Move()` structure. Arrow keys set the `Rigidbody2D` velocity on the X axis and rotate the `Transform` to flip the sprite. **C** applies an upward velocity impulse when `tocandoSuelo` is `true`. Below is the implementation from `PlayerLs.cs`:
+
+<CodeGroup>
+```csharp PlayerLs.cs — Move()
+private void Move()
+{
+    if (Input.GetKey(KeyCode.X)) { velocidad = velocidadCorrer; } else { velocidad = 3.5f; }
+
+    if (Input.GetKey(KeyCode.RightArrow))
+    {
+        player_rb.velocity = new Vector2(velocidad, player_rb.velocity.y);
+        player_tr.rotation = new Quaternion(0, 0f, 0, 0);
+        player_anim.SetBool("run", true);
+    }
+    else if (Input.GetKey(KeyCode.LeftArrow))
+    {
+        player_rb.velocity = new Vector2(-velocidad, player_rb.velocity.y);
+        player_tr.rotation = new Quaternion(0, 180f, 0, 0);
+        player_anim.SetBool("run", true);
+    }
+    else
+    {
+        player_anim.SetBool("run", false);
+    }
+
+    if (Input.GetKey(KeyCode.C) && tocandoSuelo)
+    {
+        player_rb.velocity = new Vector2(player_rb.velocity.x, salto);
+        tocandoSuelo = false;
+        player_anim.SetBool("jump", true);
+    }
+}
+```
+</CodeGroup>
+
+`tocandoSuelo` is set back to `true` in `OnCollisionEnter2D` when the player lands on a collider tagged `Suelo`.
+
+## Hurt Invincibility
+
+When the player collides with an enemy (tag `enemigo`) or an enemy trigger, one life is deducted. To prevent multiple hits during the same encounter the script uses a brief invincibility window:
+
+- `isHurt` — boolean flag; `true` while the invincibility window is active.
+- `hurtDuration` — `1.0f` seconds; the length of the invincibility window.
+- `hurtTimer` — accumulates `Time.deltaTime` each frame inside `PlayerHurt()`.
+
+When `hurtTimer >= hurtDuration` the flag resets, the timer clears, and the `hurt` animator bool is set to `false`. While `isHurt` is `true`, damage checks are skipped entirely.
+
+```csharp
+private void PlayerHurt()
+{
+    if (isHurt)
+    {
+        hurtTimer += Time.deltaTime;
+
+        if (hurtTimer >= hurtDuration)
+        {
+            isHurt = false;
+            hurtTimer = 0.0f;
+            player_anim.SetBool("hurt", false);
+        }
+    }
+}
+```
+
+## Stair & Transport Triggers
+
+PlayerLs tracks two boolean flags — `stair` and `transport` — that are set to `true` when the player enters a trigger collider with the corresponding tag. Each frame the `Transport()` method checks both flags together with **Up Arrow** input:
+
+- **`stair` + Up Arrow** — applies an upward Y velocity equal to the current `velocidad` value, letting the player climb steep tile transitions smoothly.
+- **`transport` + Up Arrow** — teleports the player (and the camera transform) to the hardcoded world position `(127.8, -2.16, -2)`, which is the entrance to the secret transport area.
+
+```csharp
+public void Transport()
+{
+    if (transport && Input.GetKey(KeyCode.UpArrow))
+    {
+        transform.position = new Vector3(127.8f, -2.16f, -2f);
+        camera_tr.position = new Vector3(127.8f, -2.16f, -2f);
+    }
+    if (stair && Input.GetKey(KeyCode.UpArrow))
+    {
+        player_rb.velocity = new Vector2(player_rb.velocity.x, velocidad);
+        tocandoSuelo = false;
+    }
+}
+```
+
+<Note>
+  The `transport` and `stair` booleans are mutually exclusive in PlayerLs because the `OnTriggerEnter2D` handler uses `if/else` — entering one trigger type resets the other to `false`.
+</Note>
+
+## Animator States
+
+The `Animator` component reads three boolean parameters that the scripts write directly:
+
+| Parameter | Type | Set `true` when | Set `false` when |
+|---|---|---|---|
+| `run` | bool | Left or Right Arrow is held | No horizontal input |
+| `jump` | bool | **C** is pressed and `tocandoSuelo` is `true` | Player lands on `Suelo` |
+| `hurt` | bool | Enemy collision while `!isHurt` | `hurtTimer` expires **or** player lands on `Suelo` |
+
+There are no integer or trigger parameters; the Animator is driven entirely by booleans toggled by physics callbacks and input checks.
+
+## Camera Follow
+
+`CameraController` holds a public `Transform player` reference and moves toward the player each frame using `Vector3.MoveTowards` at a speed of `10f * Time.deltaTime`. The follow axis depends on which player script is active in the scene:
+
+- **Story / Infinite levels** — when a GameObject tagged `PlayerLevels` is **not** present, the camera tracks both X and Y axes: `new Vector3(player.position.x, player.position.y, -5f)`.
+- **Level-select hub** — when a GameObject tagged `Player` is **not** present (i.e. only `PlayerLevels` exists), the camera locks its Y position and only follows on the X axis: `new Vector3(player.position.x, transform.position.y, -5f)`.
+
+```csharp
+void Update()
+{
+    if (GameObject.FindWithTag("PlayerLevels") == null)
+    {
+        transform.position = Vector3.MoveTowards(transform.position,
+            new Vector3(player.position.x, player.position.y, -5f),
+            10f * Time.deltaTime);
+    }
+
+    if (GameObject.FindWithTag("Player") == null)
+    {
+        transform.position = Vector3.MoveTowards(transform.position,
+            new Vector3(player.position.x, transform.position.y, -5f),
+            10f * Time.deltaTime);
+    }
+}
+```
+
+The camera's Z position is always clamped to `-5f`, keeping the 2D render order consistent regardless of scene.

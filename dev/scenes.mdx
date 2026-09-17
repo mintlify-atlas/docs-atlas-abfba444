@@ -1,0 +1,195 @@
+---
+title: "Scene Reference: All World Bits Unity Scenes"
+sidebarTitle: "Scenes"
+description: "Complete reference for every Unity scene in World Bits — purpose, active scripts, player controller, and navigation flow between scenes."
+---
+
+World Bits ships eight Unity scenes, all stored in `Assets/Scenes/`. Seven of them are registered in `ProjectSettings/EditorBuildSettings.asset` and make up the full game flow; the eighth (`Scene1.unity`) is a legacy file left over from early development and is never loaded at runtime. Every scene transition uses `SceneManager.LoadScene` with `LoadSceneMode.Single`, so the outgoing scene is always fully destroyed before the incoming one loads.
+
+## Menu
+
+The entry point of the game. `MenuController` is attached to a Canvas GameObject and wires three on-click buttons to public methods:
+
+- **Play** → `Scena1()` — loads the `Levels` hub world.
+- **Controls** → `Controles()` — loads the `Controles` reference screen.
+- **Quit** → `Salir()` — calls `Application.Quit()`.
+
+A `BearMenu` component drives a patrol bear that paces back and forth (`speed = 0.3f`, `distance = 2.0f`) in the background, giving the menu screen a lively feel without any player interaction.
+
+**Arrives from:** application launch (index 0 in build settings), or `ResetController.Menu()` / `PlayerLevels` pressing `M`.  
+**Leaves to:** `Levels`, `Controles`, or application exit.
+
+---
+
+## Levels
+
+The hub world and level-select screen. `PlayerLevels` is the active player controller. On `Start()` it looks up the `Rcerezas` and `Rtiempo` TextMesh objects by tag and populates them with the player's best run statistics:
+
+```csharp
+Rc = GameObject.FindGameObjectWithTag("Rcerezas").GetComponent<TextMesh>();
+Rt = GameObject.FindWithTag("Rtiempo").GetComponent<TextMesh>();
+
+if (PlayerPrefs.GetInt("MonedasMaximas") != 0)
+{
+    Rc.text = PlayerPrefs.GetInt("MonedasMaximas").ToString();
+    Rt.text = PlayerPrefs.GetInt("TiempoMaximo").ToString();
+}
+```
+
+The player walks to level-door trigger zones (`level1`, `level2`, `level3`, `flappymode`) and presses **Up Arrow** to enter. The internal `bool[] ActiveNv` array tracks which door is currently overlapping, and `LoadScene()` fires on the matching index each frame.
+
+**Arrives from:** `Menu`, or any scene that leads back via `SceneManager.LoadScene("Levels", ...)`.  
+**Leaves to:** `Level1`, `Level2`, `Level3`, `Infinite`, or `Menu` (press `M`).
+
+---
+
+## Controles
+
+A static controls reference screen. No player GameObject is active. `MenuController` provides a single `Menu()` button that calls `SceneManager.LoadScene("Menu", LoadSceneMode.Single)`.
+
+**Arrives from:** `Menu`.  
+**Leaves to:** `Menu`.
+
+---
+
+## Level1, Level2, Level3
+
+The three story levels share the same script combination: **`PlayerLs`** handles all player logic and **`ResetController`** manages pause, reset, and timer expiry. Each level uses a different cherry threshold checked inside `PlayerLs.OnTriggerEnter2D`:
+
+```csharp
+if (((monedas == 12) || (monedas == 22) || (monedas == 34))
+    && collision.gameObject.tag == "End")
+{
+    SceneManager.LoadScene("Levels", LoadSceneMode.Single);
+}
+```
+
+| Scene | Cherry threshold |
+|---|---|
+| Level1 | 12 cherries |
+| Level2 | 22 cherries |
+| Level3 | 34 cherries |
+
+**PlayerLs** key fields and controls:
+
+| Field | Default | Notes |
+|---|---|---|
+| `velocidad` | 3.5f | Walk speed (units/s) |
+| `velocidadCorrer` | 5f | Run speed when **X** is held |
+| `salto` | 6.5f | Jump force applied via `Rigidbody2D.velocity.y` |
+| `vida` | 3 | Starting lives |
+| `time` | 300.0f | Countdown timer in seconds |
+
+**ResetController** key bindings:
+
+| Key | Action |
+|---|---|
+| `P` | Toggle pause (`Time.timeScale` 0 ↔ 1) |
+| `R` | Hard reset — reloads the active scene from spawn |
+| `M` | Return to `Menu` |
+
+When `referenciaL1.time` reaches `0`, `ResetController` automatically calls `ResetToDefaults()`, which saves state to `PlayerPrefs` and reloads the current scene.
+
+**Arrives from:** `Levels` (Up Arrow at the corresponding door).  
+**Leaves to:** `Levels` (on completion or `M` key), or reloads itself on death/timer expiry.
+
+---
+
+## Infinite
+
+The endless runner mode. **`PlayerInfinite`** controls the player and **`MapGenerator`** extends the level by instantiating new tile prefabs as the player advances.
+
+`PlayerInfinite` uses a **count-up** timer instead of a countdown:
+
+```csharp
+private void TextTime()
+{
+    time += Time.deltaTime;
+    Text contadorTiempo = GameObject.FindWithTag("ContadorTiempo").GetComponent<Text>();
+    contadorTiempo.text = ((int)time) + "";
+}
+```
+
+On death, if the current run beats the stored record, the new values are written to `PlayerPrefs` before the scene transition:
+
+```csharp
+if (monedas >= PlayerPrefs.GetInt("MonedasMaximas"))
+{
+    PlayerPrefs.SetInt("MonedasMaximas", monedas);
+    PlayerPrefs.SetInt("TiempoMaximo", ((int)time));
+}
+PlayerPrefs.Save();
+SceneManager.LoadScene("Levels", LoadSceneMode.Single);
+```
+
+`MapGenerator` fires when the player's collider enters a trigger zone tagged `generator`. It instantiates the next `map` prefab exactly `espacioMap` (70.4698) units ahead and sets `generate = true` to prevent duplicate spawns from the same trigger.
+
+**Arrives from:** `Levels` (Up Arrow at the `flappymode`-tagged door).  
+**Leaves to:** `Levels` (on death).
+
+---
+
+## Scene1 (Legacy)
+
+`Scene1.unity` is not registered in `EditorBuildSettings.asset` and is never loaded at runtime. It was the original prototype scene from early development. It can be opened in the editor for reference but should not be modified or added to the build index.
+
+---
+
+## Scene Navigation Flow
+
+```text
+                  ┌─────────┐
+      ┌──────────►│  Menu   │◄─────────────────────┐
+      │           └────┬────┘                      │
+      │                │ Scena1()                  │ M key /
+      │                ▼                           │ Menu()
+      │           ┌─────────┐                      │
+      │      ┌───►│  Levels │◄──────────────────┐  │
+      │      │    └────┬────┘                   │  │
+      │      │         │  Up Arrow near door    │  │
+      │      │    ┌────┴──────────────────┐     │  │
+      │      │    ▼    ▼         ▼        ▼     │  │
+      │      │  Level1 Level2  Level3  Infinite │  │
+      │      │    └────┴─────────┴────────┘     │  │
+      │      │          death / complete         │  │
+      │      └───────────────────────────────────┘  │
+      │                                             │
+      │           ┌──────────┐                      │
+      └───────────│ Controles│──────────────────────┘
+                  └──────────┘
+```
+
+---
+
+## Loading Scenes
+
+Every scene transition in World Bits calls `SceneManager.LoadScene` with `LoadSceneMode.Single`, which destroys the current scene before loading the new one. There is no additive loading. The full `MenuController.cs` source shows the pattern used throughout the project:
+
+```csharp
+using UnityEngine.SceneManagement;
+
+public class MenuController : MonoBehaviour
+{
+    public void Scena1()
+    {
+        SceneManager.LoadScene("Levels", LoadSceneMode.Single);
+    }
+
+    public void Controles()
+    {
+        SceneManager.LoadScene("Controles", LoadSceneMode.Single);
+    }
+
+    public void Salir()
+    {
+        Application.Quit();
+    }
+
+    public void Menu()
+    {
+        SceneManager.LoadScene("Menu", LoadSceneMode.Single);
+    }
+}
+```
+
+The same `LoadSceneMode.Single` pattern is used in `PlayerLs`, `PlayerInfinite`, `PlayerLevels`, and `ResetController` — always passing the scene name as a string matching the filename without the `.unity` extension.

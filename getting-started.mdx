@@ -1,0 +1,87 @@
+---
+title: "Get Started with World Bits in Unity"
+sidebarTitle: "Getting Started"
+description: "Clone World Bits, open it in Unity 2022.3.7f1, and run your first play session — complete setup walkthrough in four steps."
+---
+
+This page walks you through everything you need to get World Bits running on your machine: installing the correct Unity Editor version, cloning the repository, opening the project, and navigating from the main menu into a level for the first time. The whole process takes around ten minutes on a clean machine.
+
+## Prerequisites
+
+Before you begin, make sure you have the following installed:
+
+- **Unity Hub** — the launcher that manages Unity Editor installations and projects.
+- **Unity Editor 2022.3.7f1** (LTS) — the exact version the project was authored in, with the **ManagedGame** Visual Studio workload (`.vsconfig` references `Microsoft.VisualStudio.Workload.ManagedGame`).
+- **Git** — required to clone the repository from GitHub.
+
+## Setup Steps
+
+<Steps>
+  <Step title="Install Unity 2022.3.7f1">
+    Download **Unity Hub** from [unity.com/download](https://unity.com/download) and sign in with a free Unity ID.
+
+    Inside Unity Hub, go to **Installs → Add** and search for `2022.3.7f1`. When prompted for modules, select the **Game development with Unity** workload (Visual Studio installer ID: `Microsoft.VisualStudio.Workload.ManagedGame`). This installs the C# IDE integration required to edit and build the scripts in `Assets/Script/`.
+
+    ```text
+    Recommended module checklist:
+    ✅ Microsoft Visual Studio Community (ManagedGame workload)
+    ✅ Windows Build Support (IL2CPP) — optional, required for standalone builds
+    ✅ Android Build Support — optional, for mobile builds
+    ```
+
+    <Warning>
+      Do **not** install a different 2022.x patch release (e.g. 2022.3.10f1). Package hashes in `Packages/manifest.json` are locked to `2022.3.7f1 (b16b3b16c7a0)`. Opening with a newer patch may trigger unwanted package upgrades.
+    </Warning>
+  </Step>
+
+  <Step title="Clone the Repository">
+    Open a terminal in the directory where you keep Unity projects and run:
+
+    ```bash
+    git clone https://github.com/soymatudev/World-bits.git
+    ```
+
+    Once the clone completes, open **Unity Hub**, click **Projects → Add**, and browse to the newly created `World-bits/` folder. Unity Hub will detect the `ProjectVersion.txt` file and automatically associate the project with your `2022.3.7f1` installation.
+
+    Click the project entry in Unity Hub to launch the Editor. The first load resolves all packages listed in `Packages/manifest.json` — including `com.unity.feature.2d 2.0.0`, `com.unity.textmeshpro 3.0.6`, and `com.unity.visualscripting 1.8.0` — which may take a few minutes.
+  </Step>
+
+  <Step title="Open the Menu Scene">
+    Once the Editor finishes importing assets, navigate to the **Project** panel and open:
+
+    ```
+    Assets → Scenes → Menu.unity
+    ```
+
+    Double-click `Menu.unity` to load it in the Editor. You should see the game's main menu with buttons wired to the `MenuController` script (methods: `Scena1()` → loads `Levels`, `Controles()` → loads `Controles`, `Salir()` → calls `Application.Quit()`).
+
+    Press the **▶ Play** button in the Unity toolbar to enter Play mode. The menu will become interactive immediately — click **Play** (mapped to `Scena1()`) to transition to the `Levels` hub scene.
+  </Step>
+
+  <Step title="Navigate to a Level">
+    In the **Levels** hub scene your character is controlled by the `PlayerLevels` script. Walk with the **Arrow Keys** toward any of the level doors. When your character's collider overlaps a door trigger, the `OnTriggerEnter2D` method in `PlayerLevels` sets the corresponding entry in the `ActiveNv` array:
+
+    | Door tag | Scene loaded | `ActiveNv` index |
+    |---|---|---|
+    | `flappymode` | `Infinite` | `[0]` |
+    | `level1` | `Level1` | `[1]` |
+    | `level2` | `Level2` | `[2]` |
+    | `level3` | `Level3` | `[3]` |
+
+    Once you are standing in front of a door, press **Up Arrow** — the `LoadScene()` method checks the active flag and calls `SceneManager.LoadScene()` to drop you straight into that level. Press **M** at any time inside the hub to return to `Menu`.
+  </Step>
+</Steps>
+
+## Project Layout
+
+| Path | Contents |
+|---|---|
+| `Assets/Script/` | All C# game scripts (`PlayerLs`, `PlayerInfinite`, `PlayerLevels`, `MenuController`, and more) |
+| `Assets/Scenes/` | Every Unity scene: `Menu`, `Controles`, `Levels`, `Level1`, `Level2`, `Level3`, `Infinite` |
+| `Assets/Prefabs/` | Reusable prefabs — player, enemies, coins, hearts, checkpoints, and environment pieces |
+| `Assets/SunnyLand Artwork/` | SunnyLand pixel-art sprite sheets, tilemaps, and background music |
+| `ProjectSettings/` | Unity project configuration — build settings, input manager, physics layers, and `ProjectVersion.txt` |
+
+<Tip>
+  Always open World Bits with **Unity 2022.3.7f1** specifically. The project's `Packages/manifest.json` locks every dependency — including `com.unity.feature.2d 2.0.0` and `com.unity.textmeshpro 3.0.6` — to hashes validated against that Editor version. Using a different release risks silent API changes that can break the TextMesh Pro UI text components (`contadorVidas`, `ContadorMonedas`, `ContadorTiempo`) used throughout the player scripts.
+</Tip>

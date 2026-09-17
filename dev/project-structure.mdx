@@ -1,0 +1,93 @@
+---
+title: "World Bits Project Structure and Asset Layout"
+sidebarTitle: "Project Structure"
+description: "Overview of the World Bits Unity project directory layout — scripts, scenes, prefabs, sprites, and third-party asset packs organized for easy navigation."
+---
+
+World Bits follows a conventional Unity project layout, with all game-specific content living under `Assets/` and engine configuration under `ProjectSettings/`. Game code is consolidated in a single flat `Script/` folder, while art assets are separated by origin — first-party sprites under `SunnyLand Artwork/`, enemy and water animations from BayatGames, and UI fonts in `TextMesh Pro/` and `Thaleah_PixelFont/`. Understanding this layout is the fastest way to orient yourself before opening the project in Unity 2022.3.7f1.
+
+## Directory Layout
+
+```text
+World-bits/
+├── Assets/
+│   ├── Script/              # All game C# scripts
+│   ├── Scenes/              # All Unity scenes
+│   ├── Prefabs/             # Reusable prefabs
+│   ├── Animation/           # Animation controllers
+│   ├── Img/                 # Miscellaneous images
+│   ├── SunnyLand Artwork/   # Pixel art sprites & music
+│   ├── BayatGames/          # Enemy & water animation assets
+│   ├── TextMesh Pro/        # TMP shaders, fonts, resources
+│   ├── Thaleah_PixelFont/   # Pixel font
+│   └── Plugins/             # CodeAssist editor plugin
+├── Packages/
+│   └── manifest.json        # Unity package dependencies
+└── ProjectSettings/         # Unity project configuration
+```
+
+## Scripts
+
+All thirteen C# MonoBehaviours live directly inside `Assets/Script/`. There are no sub-folders — every script is one hop away from the project root in the Project window.
+
+| Script | Purpose |
+|---|---|
+| `BearLs.cs` | Jumping patrol bear enemy for story levels — walks a configurable `distance` and periodically fires an `AddForce` jump on a timed `intervaloDeSalto` interval |
+| `BearMenu.cs` | Decorative patrol bear on the main menu screen — same left/right patrol logic but no jump, keeps the menu visually alive |
+| `CameraController.cs` | Smooth-follow camera for both player types — uses `Vector3.MoveTowards` at 10 units/second, switches between full 2-axis follow (story levels) and X-only follow (hub world) by checking active player tags |
+| `EnemyAI.cs` | Player-tracking enemy that follows on the X axis — moves toward `player.position.x` each frame using `Vector2.MoveTowards` while keeping its own Y coordinate fixed |
+| `EnemyMovement.cs` | Left-right patrol enemy with configurable `distance` — reverses direction when displacement from `startPosition` exceeds the threshold; used by slime and beetle prefabs |
+| `EventosController.cs` | Day/night background colour cycle — lerps background `SpriteRenderer` colours tagged `back` through morning → day → evening → night phases using `Mathf.PingPong` over a 120-second period |
+| `MapGenerator.cs` | Trigger-based map tile spawner for infinite mode — instantiates the next `map` prefab at `espacioMap` (70.4698 units) ahead when the player enters the trigger |
+| `MenuController.cs` | Scene navigation from menu buttons — exposes `Scena1()`, `Controles()`, `Salir()`, and `Menu()` as UnityEvent targets wired up in the Inspector |
+| `PlayerInfinite.cs` | Player controller for infinite runner mode — identical movement to `PlayerLs` but with a count-up timer (`time += Time.deltaTime`); on death saves `MonedasMaximas` / `TiempoMaximo` to `PlayerPrefs` then loads `Levels` |
+| `PlayerLevels.cs` | Hub-world player controller with level-select — reads `MonedasMaximas` and `TiempoMaximo` from `PlayerPrefs` on start and displays them in `Rcerezas` / `Rtiempo` TextMesh objects; pressing Up Arrow near a tagged door loads the corresponding scene |
+| `PlayerLs.cs` | Main player controller for story levels — handles move/run/jump (arrow keys + C), `checkpoint` saving to `PlayerPrefs`, coin collection, hurt invincibility frames (1 s), a 300-second count-down timer, and transport/stair triggers |
+| `ResetController.cs` | Pause, reset, and timer-expiry logic — `P` toggles `Time.timeScale`, `R` or a zero timer calls `ResetToDefaults()` which reloads the active scene, `M` returns to the Menu |
+| `SpawnerMonedas.cs` | Random cherry spawner on tile prefabs — rolls `Random.Range(1, 6)` at `Start()`; instantiates the `objeto` prefab (a Coin) if the result is 1–3, giving each tile roughly a 60 % chance of spawning cherries |
+
+## Scenes
+
+All scenes are stored in `Assets/Scenes/` and registered in `ProjectSettings/EditorBuildSettings.asset`. `Scene1.unity` is the only file absent from the build index and is considered legacy.
+
+| Scene | Purpose |
+|---|---|
+| `Menu.unity` | Main menu — `MenuController` drives navigation, `BearMenu` animates a patrol bear in the background |
+| `Levels.unity` | Hub world and level select — `PlayerLevels` reads best-run stats from `PlayerPrefs` and lets the player walk up to level doors to enter them |
+| `Controles.unity` | Controls reference screen — static UI showing keybindings; `MenuController.Menu()` returns to the main menu |
+| `Level1.unity` | First story level — `PlayerLs` + `ResetController`; requires 12 cherries to pass the `End` trigger |
+| `Level2.unity` | Second story level — `PlayerLs` + `ResetController`; requires 22 cherries to pass the `End` trigger |
+| `Level3.unity` | Third story level — `PlayerLs` + `ResetController`; requires 34 cherries to pass the `End` trigger |
+| `Infinite.unity` | Endless runner — `PlayerInfinite` + `MapGenerator`; timer counts up, no cherry threshold to exit; death saves the high score and returns to `Levels` |
+| `Scene1.unity` | Legacy / unused — not included in `EditorBuildSettings.asset`; kept for reference only |
+
+## Prefabs
+
+All prefabs live in `Assets/Prefabs/`.
+
+| Prefab | Role |
+|---|---|
+| `Player.prefab` | The main player character used in story levels |
+| `bear-walk3.prefab` | Base bear enemy with `BearLs` patrol-and-jump behaviour |
+| `bear-walk3 Variant.prefab` | Variant of the base bear (adjusted parameters or sprites) |
+| `Slime.prefab` | Slime enemy driven by `EnemyMovement` |
+| `Saw.prefab` | Rotating saw hazard (static obstacle, no AI script) |
+| `eagle.prefab` | Eagle enemy — airborne hazard |
+| `bettle1.prefab` | Beetle enemy driven by `EnemyMovement` |
+| `Coin.prefab` | Cherry/coin collectible; spawned by `SpawnerMonedas` and placed manually |
+| `heart.prefab` | Extra-life heart pickup |
+| `Checkpoint.prefab` | Checkpoint flag; collision saves position and stats to `PlayerPrefs` |
+| `Aviso.prefab` | In-world notice or warning UI panel |
+| `BackComplete.prefab` | Level-complete overlay |
+| `EventTime.prefab` | Day/night cycle background object carrying `EventosController` |
+| `1-4x.prefab` | Tile segment used by `MapGenerator` to extend the infinite-mode map |
+
+## Third-Party Assets
+
+| Asset | Description |
+|---|---|
+| **SunnyLand Artwork** | Ansimuz's SunnyLand pixel-art sprite sheet — provides the player character, environment tiles, cherries, and background music tracks |
+| **BayatGames Free Platform Game Assets** | Enemy and water animation sprites (slime, eagle, beetle, water surface) |
+| **TextMesh Pro 3.0.6** | Shipped as a Unity package (`com.unity.textmeshpro 3.0.6`) and also unpacked into `Assets/TextMesh Pro/` for shader and resource access |
+| **Thaleah Pixel Font** | Standalone pixel typeface stored in `Assets/Thaleah_PixelFont/` and used for in-game UI text |
+| **CodeAssist** | Editor productivity plugin stored in `Assets/Plugins/`; provides code-completion enhancements inside the Unity Editor |

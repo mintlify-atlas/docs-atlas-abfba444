@@ -1,0 +1,95 @@
+{
+  "projectType": "general",
+  "projectName": "World Bits",
+  "projectDescription": "A 2D platformer video game built with Unity 2022, featuring multiple levels, an infinite runner mode, enemy AI, a day/night cycle, checkpoints, collectibles, and a level-select hub — designed as a hobby and learning project.",
+  "theme": "almond",
+  "primaryColor": "#5B8DD9",
+  "lightColor": "#A8C8FF",
+  "darkColor": "#1E3A5F",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Game Guide",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "getting-started"
+            ]
+          },
+          {
+            "group": "Gameplay",
+            "pages": [
+              "gameplay/controls",
+              "gameplay/levels",
+              "gameplay/infinite-mode",
+              "gameplay/collectibles-and-scoring"
+            ]
+          },
+          {
+            "group": "Game Systems",
+            "pages": [
+              "systems/player",
+              "systems/enemies",
+              "systems/checkpoints",
+              "systems/day-night-cycle",
+              "systems/map-generation"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Developer Reference",
+        "groups": [
+          {
+            "group": "Project Setup",
+            "pages": [
+              "dev/project-structure",
+              "dev/unity-setup",
+              "dev/scenes"
+            ]
+          },
+          {
+            "group": "Scripts Reference",
+            "pages": [
+              "dev/scripts/player-scripts",
+              "dev/scripts/enemy-scripts",
+              "dev/scripts/controller-scripts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Three hand-crafted platform levels plus an endless infinite runner mode",
+    "Level-select hub world navigated by the player character",
+    "Multiple enemy types: patrol-walking enemies (EnemyMovement), player-tracking AI (EnemyAI), and a jumping bear (BearLs)",
+    "Checkpoint system with PlayerPrefs persistence across scene loads",
+    "Dynamic day/night color-cycle applied to all background sprites (EventosController)",
+    "Procedural map tile generation in infinite mode (MapGenerator)",
+    "Cherry (coin) collectibles with random spawning (SpawnerMonedas) and best-score saving",
+    "Heart power-ups that restore player health",
+    "Stair climbing and pipe-transport triggers",
+    "Pause (P), reset (R), and return-to-menu (M) keyboard shortcuts",
+    "TextMesh Pro pixel-font UI overlays for lives, coins, and timer",
+    "SunnyLand pixel-art asset pack with animated player states (idle, run, jump, hurt, climb)"
+  ],
+  "publicApiSurface": [
+    "PlayerLs — main player controller for story levels (velocidad, velocidadCorrer, salto, monedas, vida, time, checkpoint)",
+    "PlayerInfinite — player controller for infinite runner mode with best-score saving via PlayerPrefs",
+    "PlayerLevels — hub-world player controller that triggers scene loads for each level/mode",
+    "EnemyMovement — patrol enemy (speed, distance, direction flip)",
+    "EnemyAI — player-tracking enemy (velocidadEnemigo, follows player X axis)",
+    "BearLs — jumping patrol bear (salto, speed, distance, intervaloDeSalto)",
+    "BearMenu — decorative menu bear animation",
+    "CameraController — smooth follow camera for both player types",
+    "EventosController — background day/night color lerp cycle (tiempoTotal, four Color phases)",
+    "MapGenerator — trigger-based infinite map tile spawner (map prefab, espacioMap)",
+    "SpawnerMonedas — probabilistic coin spawner on Start",
+    "ResetController — pause, reset, and scene-reload logic referencing PlayerLs",
+    "MenuController — scene navigation methods: Scena1(), Controles(), Salir(), Menu()",
+    "Scenes: Menu, Levels, Controles, Level1, Level2, Level3, Infinite"
+  ]
+}

@@ -1,0 +1,93 @@
+---
+title: "World Bits Keyboard Controls and Input Reference"
+sidebarTitle: "Controls"
+description: "Complete keyboard reference for World Bits — movement, running, jumping, climbing, pausing, and menu navigation for all game modes."
+---
+
+World Bits is a keyboard-only 2D pixel-art platformer. Every action — from walking and jumping to pausing and resetting — is mapped to a single key with no mouse input required. The controls are consistent across Story Levels and the Hub World, with a few mode-specific differences detailed below.
+
+## Movement Controls
+
+These keys drive the player character in all scenes that use `PlayerLs`, `PlayerInfinite`, or `PlayerLevels`.
+
+| Key | Action | Details |
+|-----|--------|---------|
+| **Right Arrow** | Move right | Sets `player_rb.velocity.x` to `velocidad`; rotates sprite to face right |
+| **Left Arrow** | Move left | Sets `player_rb.velocity.x` to `-velocidad`; rotates sprite to face left |
+| **C** | Jump | Applies upward velocity (`salto = 6.5f`) only when `tocandoSuelo == true` |
+| **X** | Hold to run | Switches speed from `velocidad` (3.5f) to `velocidadCorrer` (5f) while held |
+| **Up Arrow** | Climb stairs / enter level | Applies upward velocity on a `stair` trigger; loads a scene on a level-door trigger |
+
+## System Controls
+
+These keys control game flow and are handled by `ResetController` in Story Levels, and by `PlayerLevels` in the Hub World.
+
+| Key | Action | Details |
+|-----|--------|---------|
+| **P** | Pause / Unpause | Calls `TogglePause()` — sets `Time.timeScale = 0` to pause, `Time.timeScale = 1` to resume |
+| **R** | Reset level | Calls `ResetToDefaults()` — restores `monedas`, `vida`, and `time` to starting values, saves to `PlayerPrefs`, then reloads the active scene |
+| **M** | Return to Menu | Calls `SceneManager.LoadScene("Menu")` from either `ResetController` or `PlayerLevels` |
+
+## Hub World Navigation
+
+In the **Levels** scene, the player walks through the hub world and approaches doors that act as trigger zones. Each door's `GameObject` is tagged with the destination it leads to. When the player's collider overlaps one of these trigger zones, `PlayerLevels.OnTriggerEnter2D` sets the corresponding flag in the `ActiveNv` boolean array. Pressing **Up Arrow** while the flag is active loads the matching scene.
+
+| Door Tag | Destination Scene | Description |
+|----------|------------------|-------------|
+| `flappymode` | `Infinite` | Infinite Runner mode |
+| `level1` | `Level1` | Story Level 1 |
+| `level2` | `Level2` | Story Level 2 |
+| `level3` | `Level3` | Story Level 3 |
+
+Walk up to a door and press **Up Arrow** to enter it. Moving away from a door before pressing the key cancels the pending load because `OnTriggerEnter2D` resets the other flags each time it fires.
+
+## Controls by Mode
+
+<Tabs>
+  <Tab title="Story Levels (PlayerLs)">
+    Story levels (`Level1`, `Level2`, `Level3`) use the `PlayerLs` script paired with `ResetController`.
+
+    | Key | Behaviour |
+    |-----|-----------|
+    | Right / Left Arrow | Walk at `velocidad = 3.5f` |
+    | X (hold) | Run at `velocidadCorrer = 5f` |
+    | C | Jump (ground only) |
+    | Up Arrow | Climb a `stair` trigger or teleport via a `transport` trigger |
+    | P | Pause (`Time.timeScale = 0`) / Unpause (`Time.timeScale = 1`) |
+    | R | Reset level — restores lives, cherries, and timer; returns to spawn |
+    | M | Load `Menu` scene |
+
+    `ResetController` also triggers an automatic reset when the 300-second countdown reaches `0`.
+  </Tab>
+
+  <Tab title="Infinite Runner (PlayerInfinite)">
+    The `Infinite` scene uses `PlayerInfinite`. There is **no pause key, no reset key, and no M key** — dying is the only way to exit. The timer counts **up** instead of down.
+
+    | Key | Behaviour |
+    |-----|-----------|
+    | Right / Left Arrow | Walk at `velocidad = 3.5f` |
+    | X (hold) | Run at `velocidadCorrer = 5f` |
+    | C | Jump (ground only) |
+    | Up Arrow | Climb a `stair` trigger |
+
+    When lives reach 0, the script saves the high score to `PlayerPrefs` and loads the `Levels` hub automatically.
+  </Tab>
+
+  <Tab title="Hub World (PlayerLevels)">
+    The `Levels` scene uses `PlayerLevels`. Movement speed is slightly lower (`velocidad = 2f`, `velocidadCorrer = 3.5f`, `salto = 5f`). The **M key** is handled directly in the `Move()` method rather than by a separate controller.
+
+    | Key | Behaviour |
+    |-----|-----------|
+    | Right / Left Arrow | Walk at `velocidad = 2f` |
+    | X (hold) | Run at `velocidadCorrer = 3.5f` |
+    | C | Jump (ground only) |
+    | Up Arrow | Enter a level door (loads the tagged scene) |
+    | M | Load `Menu` scene |
+
+    There is no pause key, no reset key, and no timer in the Hub World.
+  </Tab>
+</Tabs>
+
+<Note>
+  World Bits uses Unity's **legacy Input Manager** throughout. All key detection is performed with `Input.GetKey()` (held) or `Input.GetKeyDown()` (single press), not the newer Input System package. No controller or mouse input is mapped.
+</Note>

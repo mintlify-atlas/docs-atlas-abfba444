@@ -1,0 +1,314 @@
+---
+title: "Controller Scripts: Camera, Events, Menu, Reset"
+sidebarTitle: "Controller Scripts"
+description: "Reference for CameraController, EventosController, MenuController, ResetController, MapGenerator, and SpawnerMonedas — support scripts that drive World Bits systems."
+---
+
+The controller and support scripts in World Bits manage everything that sits outside the player and enemy characters: the camera that follows the action, the day/night background colour cycle, the main menu navigation, the pause and reset system, procedural map chunk spawning in the infinite runner, and randomised coin spawning throughout all levels. None of these scripts represent a character — they are attached to dedicated manager or environment GameObjects and communicate with the player scripts through public Inspector references or Unity tags.
+
+---
+
+## CameraController
+
+`CameraController` is attached to the scene camera and smoothly follows the player using `Vector3.MoveTowards` at a fixed rate of 10 units per second. Its behaviour changes depending on **which player script is active in the scene**, detected by tag lookup every frame.
+
+### Public Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `player` | `Transform` | Drag the player GameObject here in the Inspector. The camera moves toward this transform each frame. |
+
+### `Update()` Logic
+
+Two tag checks run every frame:
+
+- If **no** `PlayerLevels`-tagged object exists → the camera follows **both X and Y** axes of `player.position` (full 2D tracking, used in level scenes and the infinite runner).
+- If **no** `Player`-tagged object exists → the camera follows **only the X axis**, keeping its own Y position (used in the `Levels` hub scene where vertical camera lock is preferred).
+
+The checks use `== null` on `FindWithTag`, so the correct branch fires for whichever scene is loaded.
+
+```csharp
+void Update()
+{
+    if (GameObject.FindWithTag("PlayerLevels") == null)
+    {
+        transform.position = Vector3.MoveTowards(
+            transform.position,
+            new Vector3(player.position.x, player.position.y, -5f),
+            10f * Time.deltaTime
+        );
+    }
+
+    if (GameObject.FindWithTag("Player") == null)
+    {
+        transform.position = Vector3.MoveTowards(
+            transform.position,
+            new Vector3(player.position.x, transform.position.y, -5f),
+            10f * Time.deltaTime
+        );
+    }
+}
+```
+
+<Note>
+`GameObject.FindWithTag` is called twice every frame. In scenes with a single camera this is negligible, but if you ever add more cameras consider caching the tag check result or using a scene-load event to set a mode flag once instead.
+</Note>
+
+---
+
+## EventosController
+
+`EventosController` drives the ambient background colour cycle that transitions through four times of day — morning, daytime, afternoon, and night — by lerping the colour of every `SpriteRenderer` tagged `back` in the scene.
+
+### Public Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `tiempoTotal` | `float` | `40f` | Seed value for the `PingPong` cycle. Starts at 40 so the scene doesn't begin at full darkness; incremented by `Time.deltaTime` each frame. |
+
+### Colour Constants (Private)
+
+| Field | RGBA Values | Time of Day |
+|---|---|---|
+| `colorMañana` | `(1.0, 1.0, 0.658, 1.0)` | Morning — warm yellow tint |
+| `colorDia` | `(1.0, 1.0, 1.0, 1.0)` | Daytime — neutral white |
+| `colorTarde` | `(1.0, 0.658, 0.961, 1.0)` | Afternoon — pink/purple sunset |
+| `colorNoche` | `(0.451, 0.361, 0.722, 1.0)` | Night — deep violet |
+
+### `Update()` Logic
+
+`tiempoTotal` is divided by `120` and fed into `Mathf.PingPong(..., 1f)` to produce a value `t` that oscillates between `0` and `1` over a 240-second full cycle. Three threshold checks map `t` to the correct lerp pair:
+
+| `t` range | Lerp |
+|---|---|
+| `0.00 – 0.33` | `colorMañana` → `colorDia` |
+| `0.33 – 0.66` | `colorDia` → `colorTarde` |
+| `0.66 – 1.00` | `colorTarde` → `colorNoche` |
+
+The resulting colour is applied to every `SpriteRenderer` in the `spriteRenderers` array (collected at `Start()` from all `back`-tagged GameObjects).
+
+```csharp
+private void Update()
+{
+    tiempoTotal += Time.deltaTime;
+    float t = Mathf.PingPong(tiempoTotal / 120f, 1f);
+
+    foreach (SpriteRenderer spriteRenderer in spriteRenderers)
+    {
+        Color colorActual = Color.Lerp(colorMañana, colorDia, t);
+
+        if (t > 0.33f && t <= 0.66f)
+        {
+            colorActual = Color.Lerp(colorDia, colorTarde, (t - 0.33f) / 0.33f);
+        }
+        else if (t > 0.66f)
+        {
+            colorActual = Color.Lerp(colorTarde, colorNoche, (t - 0.66f) / 0.34f);
+        }
+
+        spriteRenderer.color = colorActual;
+    }
+}
+```
+
+---
+
+## MenuController
+
+`MenuController` is a pure navigation script attached to a UI manager GameObject on the main menu. It exposes four public methods wired to UI Button `OnClick` events — no `Update()` logic is involved.
+
+### Public Methods
+
+| Method | Scene Loaded | Notes |
+|---|---|---|
+| `Scena1()` | `Levels` | Starts the game from the level-selection hub. |
+| `Controles()` | `Controles` | Opens the controls/help screen. |
+| `Salir()` | — | Calls `Application.Quit()` to close the application. |
+| `Menu()` | `Menu` | Returns to the main menu (useful from sub-screens). |
+
+```csharp
+public void Scena1()
+{
+    SceneManager.LoadScene("Levels", LoadSceneMode.Single);
+}
+
+public void Controles()
+{
+    SceneManager.LoadScene("Controles", LoadSceneMode.Single);
+}
+
+public void Salir()
+{
+    Application.Quit();
+}
+
+public void Menu()
+{
+    SceneManager.LoadScene("Menu", LoadSceneMode.Single);
+}
+```
+
+<Note>
+`Application.Quit()` has no effect inside the Unity Editor — attach a development build or test in a standalone player to verify the quit behaviour.
+</Note>
+
+---
+
+## ResetController
+
+`ResetController` is the game-management script for the timed level scenes. It holds a reference to the `PlayerLs` component so it can read and write player state directly. It handles the pause toggle, in-game menu shortcut, manual reset, and the automatic reset triggered when the countdown timer hits zero.
+
+### Public Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `referenciaL1` | `PlayerLs` | Drag the player GameObject (with `PlayerLs`) into this slot. Used to read/write `monedas`, `vida`, and `time`. |
+
+### Private / State Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `monedas` | `int` | `0` | Default coin count restored on reset. |
+| `vida` | `int` | `3` | Default life count restored on reset. |
+| `time` | `float` | `300.0f` | Default timer value restored on reset. |
+| `isPaused` | `bool` | `false` | Tracks pause state; toggled by `TogglePause()`. |
+
+### Keyboard Bindings
+
+| Key | Action |
+|---|---|
+| **P** | Toggle pause (`TogglePause()`) |
+| **M** | Load `Menu` scene immediately |
+| **R** | Call `ResetToDefaults()` manually |
+| _(automatic)_ | `ResetToDefaults()` is also called when `(int)referenciaL1.time == 0` |
+
+### Key Methods
+
+#### `ResetToDefaults()`
+
+Writes the default values back onto `referenciaL1`, then calls `SavePlayerPrefs()`.
+
+```csharp
+public void ResetToDefaults()
+{
+    referenciaL1.monedas = monedas;
+    referenciaL1.vida    = vida;
+    referenciaL1.time    = time;
+    SavePlayerPrefs();
+}
+```
+
+#### `SavePlayerPrefs()`
+
+Persists the reset state to `PlayerPrefs`, restores the checkpoint to the original spawn position (read from `PlayerPrefs` keys `positionO_x/y/z` written by `PlayerLs.Start()`), and reloads the active scene.
+
+```csharp
+private void SavePlayerPrefs()
+{
+    PlayerPrefs.SetInt("monedas",      referenciaL1.monedas);
+    PlayerPrefs.SetInt("vida",         referenciaL1.vida);
+    PlayerPrefs.SetFloat("time",       referenciaL1.time);
+    PlayerPrefs.SetFloat("checkpoint_x", PlayerPrefs.GetFloat("positionO_x"));
+    PlayerPrefs.SetFloat("checkpoint_y", PlayerPrefs.GetFloat("positionO_y"));
+    PlayerPrefs.SetFloat("checkpoint_z", PlayerPrefs.GetFloat("positionO_z"));
+    PlayerPrefs.Save();
+    SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+}
+```
+
+#### `TogglePause()`
+
+Flips `isPaused` and sets `Time.timeScale` to `0` (paused) or `1` (running). Setting `timeScale` to zero stops all physics, animations, and `Update()` calls that depend on `Time.deltaTime`.
+
+```csharp
+public void TogglePause()
+{
+    isPaused = !isPaused;
+    Time.timeScale = isPaused ? 0 : 1;
+}
+```
+
+Full `Update()` — keyboard polling and automatic timer reset:
+
+```csharp
+private void Update()
+{
+    if (Input.GetKeyDown(KeyCode.P)) { TogglePause(); }
+    if (Input.GetKeyDown(KeyCode.M)) { SceneManager.LoadScene("Menu", LoadSceneMode.Single); }
+    if (Input.GetKeyDown(KeyCode.R)) { ResetToDefaults(); }
+
+    if (((int)referenciaL1.time) == 0)
+    {
+        ResetToDefaults();
+    }
+}
+```
+
+---
+
+## MapGenerator
+
+`MapGenerator` is attached to a trigger collider at the right edge of each map chunk in the `Infinite` scene. When the player walks through the trigger, it instantiates the next chunk prefab directly to the right, enabling seamless endless-runner map extension.
+
+### Public Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `map` | `GameObject` | _(Inspector — drag chunk Prefab)_ | The map chunk prefab to instantiate. |
+| `espacioMap` | `float` | `70.4698f` | X offset added to the trigger's own position when placing the new chunk, ensuring gapless tiling. |
+| `generate` | `bool` | `false` | One-shot guard; set to `true` after the first trigger so the same spawner never fires again. |
+
+### `OnTriggerEnter2D()` Logic
+
+Only acts on `Player`-tagged colliders and only if `generate` is still `false`. The new chunk is placed at `(trigger.x + espacioMap, 8.443801, 1.838953)` using the same rotation as the spawner itself, then `generate` is set to `true` to prevent duplicate spawns.
+
+```csharp
+private void OnTriggerEnter2D(Collider2D collision)
+{
+    if (collision.gameObject.tag == "Player")
+    {
+        if (!generate)
+        {
+            Instantiate(
+                map,
+                new Vector3(transform.position.x + espacioMap, 8.443801f, 1.838953f),
+                transform.rotation
+            );
+            generate = true;
+        }
+    }
+}
+```
+
+<Tip>
+The Y (`8.443801f`) and Z (`1.838953f`) spawn coordinates are baked in. If you redesign a map chunk's pivot point, update those literals — or refactor to store them as public fields for Inspector control.
+</Tip>
+
+---
+
+## SpawnerMonedas
+
+`SpawnerMonedas` is placed throughout level scenes on invisible spawner GameObjects. At `Start()` it rolls a random integer and conditionally instantiates a coin prefab, adding natural variation to coin distribution without requiring hand-placement of every pickup.
+
+### Public Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `objeto` | `GameObject` | The coin prefab to spawn. Drag any collectible prefab here in the Inspector. |
+
+### `Start()` Logic
+
+`Random.Range(1, 6)` produces an integer in the range `[1, 5]`. The coin spawns only when `probabilidad < 4` **and** `probabilidad > 0`, meaning values 1, 2, and 3 trigger a spawn — giving approximately a **60 % spawn chance** per spawner location. Values 4 and 5 produce no coin.
+
+```csharp
+void Start()
+{
+    int probabilidad = Random.Range(1, 6);
+    if (probabilidad < 4 && probabilidad > 0)
+    {
+        Instantiate(objeto, transform.position, transform.rotation);
+    }
+}
+```
+
+The coin is instantiated at the spawner's own world position and rotation, so placement is controlled entirely by where you position the `SpawnerMonedas` GameObject in the scene.

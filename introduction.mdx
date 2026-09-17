@@ -1,0 +1,51 @@
+---
+title: "World Bits: A 2D Platformer Built with Unity"
+sidebarTitle: "Introduction"
+description: "World Bits is a 2D pixel-art platformer made with Unity 2022. Learn about the game's modes, mechanics, systems, and project architecture."
+---
+
+World Bits is a hobby and learning project — a 2D side-scrolling platformer built with Unity 2022 and C#. The game features hand-crafted story levels filled with enemies, coins, checkpoints, and a 300-second countdown timer, alongside an infinite runner mode where your survival time and cherry count compete for an all-time best. A level-select hub world ties everything together, letting you walk your character from door to door and jump straight into any mode. Every system — from player movement to scene transitions — is written in plain C# MonoBehaviours, making the codebase a solid reference for anyone learning Unity 2D game development.
+
+## Game Modes
+
+World Bits ships with three distinct experiences in one project. The **story levels** (Level1, Level2, Level3) are handcrafted platforming stages: each starts a 300-second countdown (`time = 300.0f` in `PlayerLs`), tracks coin pickups against a required threshold, and respawns the player at the last touched checkpoint when lives run out. The **Infinite runner** (`PlayerInfinite`) flips the timer to count up instead of down, saves a `MonedasMaximas` (max cherries) and `TiempoMaximo` (best time) high-score to `PlayerPrefs`, and returns you to the hub when lives are exhausted. The **Levels hub** (`PlayerLevels`) is a navigable overworld where your character walks between level doors; pressing **Up Arrow** on a door loads the corresponding scene directly.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Controls" icon="gamepad" href="/gameplay/controls">
+    Arrow Keys to move, **C** to jump, **X** to sprint, and **Up Arrow** to enter doors or climb stairs. Every input is handled by a single `Move()` method per player script.
+  </Card>
+  <Card title="Levels & Hub World" icon="map" href="/gameplay/levels">
+    Three story levels plus a navigable hub scene (`Levels`). The `PlayerLevels` script detects door tags (`level1`, `level2`, `level3`, `flappymode`) and loads the matching Unity scene on Up Arrow press.
+  </Card>
+  <Card title="Enemy Systems" icon="skull" href="/systems/enemies">
+    Enemies use the `enemigo` tag. Collision subtracts one life and triggers a 1-second invincibility window (`hurtDuration = 1.0f`). Falling into a `deadzone` instantly zeroes lives and forces a checkpoint respawn.
+  </Card>
+  <Card title="Checkpoints & Scoring" icon="flag" href="/systems/checkpoints">
+    Touching a `checkpoint` trigger saves the player's world position and current `vida`/`monedas` values to `PlayerPrefs`. On death the player warrants back with `vida = 1` and resumes from the saved position.
+  </Card>
+  <Card title="Infinite Runner" icon="infinity" href="/gameplay/infinite-mode">
+    A score-attack mode driven by `PlayerInfinite`. Time counts up with `Time.deltaTime`; on game-over, cherry count and elapsed time are compared to stored `PlayerPrefs` records and saved if improved.
+  </Card>
+  <Card title="Day/Night Cycle" icon="sun" href="/systems/day-night-cycle">
+    A dynamic lighting system shifts the scene ambience across play sessions, giving World Bits its atmospheric pixel-art look powered by the SunnyLand artwork and Unity's 2D lighting pipeline.
+  </Card>
+</CardGroup>
+
+## Technology Stack
+
+World Bits is built on the following tools and packages, all pinned in `Packages/manifest.json` and `ProjectSettings/ProjectVersion.txt`:
+
+| Component | Version / Detail |
+|---|---|
+| **Unity Editor** | 2022.3.7f1 (LTS) |
+| **Language** | C# (.NET via Mono/IL2CPP) |
+| **2D Feature Pack** | `com.unity.feature.2d` 2.0.0 |
+| **TextMesh Pro** | `com.unity.textmeshpro` 3.0.6 |
+| **Unity Visual Scripting** | `com.unity.visualscripting` 1.8.0 |
+| **Art & Audio** | SunnyLand pixel-art asset pack (`Assets/SunnyLand Artwork/`) |
+
+<Note>
+  World Bits is a personal learning project and is not published commercially. The codebase prioritises clarity over production patterns — it is an excellent reference for Unity 2D beginners exploring scenes, physics, animation state machines, and `PlayerPrefs`-based persistence.
+</Note>

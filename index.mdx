@@ -1,20 +1,48 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "World Bits: 2D Platformer Game"
+sidebarTitle: "Home"
+description: "World Bits is a 2D platformer built with Unity 2022. Explore three hand-crafted levels, an infinite runner mode, and dynamic game systems."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+Welcome to the World Bits documentation. World Bits is a 2D pixel-art platformer game built with Unity 2022 as a hobby and learning project. Navigate a colorful hub world to jump into story levels, challenge yourself in the endless infinite runner, dodge enemies, collect cherries, and reach the finish line before time runs out.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Getting Started" icon="rocket" href="/getting-started">
+    Set up Unity and run the project locally in minutes.
+  </Card>
+  <Card title="Controls" icon="gamepad" href="/gameplay/controls">
+    Learn every keyboard shortcut — movement, jumping, running, and more.
+  </Card>
+  <Card title="Levels" icon="map" href="/gameplay/levels">
+    Explore the hub world, three story levels, and the infinite runner.
+  </Card>
+  <Card title="Scripts Reference" icon="code" href="/dev/scripts/player-scripts">
+    Deep-dive into the C# scripts that power every game mechanic.
+  </Card>
+</CardGroup>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## What is World Bits?
+
+World Bits is a 2D side-scrolling platformer where the player navigates through a level-select hub and chooses from three story levels or an endless runner mode. The game features:
+
+- **Three story levels** — hand-crafted platform stages with a countdown timer, collectibles, and enemy encounters
+- **Infinite runner mode** — procedurally assembled tile maps that scroll forever; survival and cherry counts are saved as your high score
+- **Pixel-art visuals** — SunnyLand artwork pack with animated player states (idle, run, jump, hurt, climb)
+- **Dynamic day/night cycle** — backgrounds transition through morning, day, afternoon, and night colors in real time
+- **Enemy variety** — patrol walkers, player-tracking AI, and a jumping bear each with configurable parameters
+- **Checkpoint system** — progress saved via Unity PlayerPrefs so the game respects your last saved position
+
+<Steps>
+  <Step title="Install Unity 2022.3.7f1">
+    Download Unity Hub and install Unity Editor version **2022.3.7f1** with the **2D Game Development** workload.
+  </Step>
+  <Step title="Open the project">
+    Clone the repository and open the root folder in Unity Hub. Unity will resolve all packages automatically from `Packages/manifest.json`.
+  </Step>
+  <Step title="Open the Menu scene">
+    In the Project window, navigate to **Assets → Scenes** and open `Menu.unity`. Press **Play** to launch the game.
+  </Step>
+  <Step title="Start playing">
+    Use **Arrow Keys** to move, **C** to jump, and **X** to run. In the hub world press **Up Arrow** near a level door to enter it.
+  </Step>
+</Steps>
